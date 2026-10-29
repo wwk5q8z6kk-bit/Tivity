@@ -1,0 +1,20 @@
+---
+# Session 2026-08-22T04:12:10Z
+I've written both files for the autonomous session at `.autonomous/lie-kill-track-a-main/`:
+
+**`task_list.md`** — 21 ordered, evidence-grounded subtasks covering: FED-000 verification + dead-TOML-key cleanup (2 subtasks), the four license-surface gaps (4 subtasks), backlog truth-maintenance/dashboard recount (4 subtasks), a SPACE-001 regression gate check, and SPACE-002 implementation broken into inventory → scope decision → state-machine tests → self-approval refusal → on-behalf-of exposure → acceptance run (6 subtasks), plus closeout/consistency checks.
+
+**`progress.md`** — documents the most important discovery: the repo's actual `main` HEAD (`59592c9`) is six commits ahead of the stale gitStatus snapshot I was given (`3de2371`), and SPACE-001, SPACE-004, AGENT-001/002/003, IK-002/003, WS-001/003/014, and FED-000 are already implemented/verified. I traced this via `git log`, `AGENTS.md` history, and `IMPLEMENTATION_BACKLOG.md` entries rather than trusting either the stale snapshot or the parent task's framing.
+
+Key findings baked into the task list so the executing session doesn't rediscover them:
+- `config/default.toml`'s `federation_enabled` key is genuinely dead (unread by any Rust struct) — real cleanup needed.
+- All four license gaps (README, Tauri Cargo.toml, mv-mcp Cargo.toml, .gitignore) are real and unaddressed; the tracked `.cursor/hooks/state/continual-learning.json` needs `git rm --cached`, not just a gitignore entry.
+- The backlog Dashboard undercounts verified items by roughly 3x (9 claimed vs. ~27 actual).
+- SPACE-002 already has ~4,000 lines of WorkOrder/AgentRun scaffolding — the real gaps are a missing named acceptance test, self-approval-refusal enforcement, and on-behalf-of exposure, not a from-scratch build. Artifact modeling was explicitly scoped out (it belongs to SPACE-005).
+
+No code was implemented, no files besides these two were touched, and no commits were made, per the Initializer constraints.
+---
+# Session 2026-08-22T04:40:54Z
+Budget is essentially exhausted (~$0.84 left of $8). The mv-core half of subtask 12's regression check passed 5/5, now recorded in `progress.md`. The remaining background test chain (mv-storage, federation_e2e, work_order_agent_run) is still running but I can't afford to wait on it further — the next session should re-run those three commands directly.
+
+Stopping. Reason: bounded budget reached (TSC #7) — all durable findings are written to `progress.md` and `task_list.md` is checkpointed accurately (8/21 done, 13 open with precise classifications, none vague).
