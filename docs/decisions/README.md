@@ -299,6 +299,21 @@ runDueJobs → fetch → memory note asserted in 57s. The Tauri-invoke branch is
 typechecked and compiles but cannot run headless; first desktop launch should
 watch the Agents tab result line.
 
+## 0020 — Search — DECIDED: FTS5 per-source indexes, LIKE fallback, node:sqlite tests
+
+| Option | Score notes | Verdict |
+|---|---|---|
+| FTS5 external-content tables + insert/delete/update triggers per source (docs, memory, tasks); project filter via rowid join; user input sanitized into quoted-phrase AND queries | Vision 4 (unified find), robustness 4 (no MATCH-injection crashes) | CHOSEN |
+| LIKE fallback when FTS is unavailable (migrate + query both guarded) | Degradation 5 — search never breaks the app, only loses ranking | CHOSEN as fallback, not primary |
+| Committed SQL tests on node:sqlite (zero new deps, FTS5 verified present) running the real MIGRATIONS strings + shared query builders | Proof 5 — tests the actual SQL, not a model of it | CHOSEN over better-sqlite3 (native-build friction under pnpm ignored-scripts) |
+| Single unified FTS index | Saves 2 tables, complicates triggers + kind attribution | Rejected — per-source keeps triggers trivial |
+| Results display-only in v0 | Effort 5; tabs have no entity deep-link routing yet | CHOSEN — navigation deferred, labeled in UI |
+
+Decisive factors: ranked search with zero new dependencies + the safety net (LIKE)
+means FTS absence anywhere (older SQLite, odd drivers) degrades quality, never
+availability.
+Evidence: node:sqlite FTS5 probe green this session.
+
 ## Roadmap (from workflow synthesis, surface-adjusted)
 
 - M0 scaffold + core tables + links + impact check (S0+S1 slice) — SHIPPED and verified
@@ -310,6 +325,7 @@ watch the Agents tab result line.
 - M2d GitHub App auth + webhooks (needs user-side App setup, see 0018 notes)
 - M4a local audited agent runtime: jobs ledger + runs + rule handlers (S7 slice) — SHIPPED and verified
 - M4b LLM handlers: agent-task job, Ollama-local default, native+fetch paths (S7) — SHIPPED and verified
+- M5a FTS5 search over docs/memory/tasks (S8 slice) — SHIPPED and verified
 - M4 agent runtime on Mastra + AWR substrate, audited runs (S7)
 - M5 hardening, FTS5/vector search, IDE extension client
 - (Original P5-Tauri-shell milestone folds into M0 per decision 0001 override)

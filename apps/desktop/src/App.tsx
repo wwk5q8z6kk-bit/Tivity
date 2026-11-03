@@ -5,7 +5,7 @@ import { createStore } from './store-setup';
 import { desktopAgentTask } from './agent-task';
 import { findImpacted, shortId, type EntityRef } from '@tivity/core';
 
-type Tab = 'tasks' | 'docs' | 'decisions' | 'memory' | 'links' | 'requirements' | 'evidence' | 'delivery' | 'design' | 'quality' | 'sync' | 'agents';
+type Tab = 'tasks' | 'docs' | 'decisions' | 'memory' | 'links' | 'requirements' | 'evidence' | 'delivery' | 'design' | 'quality' | 'sync' | 'agents' | 'search';
 
 const NEXT_STATUS = { todo: 'doing', doing: 'done', done: 'todo' } as const;
 const NEXT_SPRINT = { planned: 'active', active: 'closed', closed: 'planned' } as const;
@@ -18,6 +18,7 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'delivery', label: 'Delivery' },
   { id: 'sync', label: 'Sync' },
   { id: 'agents', label: 'Agents' },
+  { id: 'search', label: 'Search' },
   { id: 'docs', label: 'Docs' },
   { id: 'evidence', label: 'Evidence' },
   { id: 'design', label: 'Design' },
@@ -65,6 +66,8 @@ export default function App() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [runResult, setRunResult] = useState('');
   const [running, setRunning] = useState(false);
+  const [searchHits, setSearchHits] = useState<Array<{ kind: string; id: string; title: string; snippet: string }>>([]);
+  const [searched, setSearched] = useState(false);
 
   function report(e: unknown): void {
     setError(e instanceof Error ? e.message : String(e));
@@ -712,6 +715,18 @@ export default function App() {
     }
   }
 
+  async function runSearch(e: FormEvent<HTMLFormElement>): Promise<void> {
+    e.preventDefault();
+    if (!store || !activeId) return;
+    const q = String(new FormData(e.currentTarget).get('q') ?? '');
+    try {
+      setSearchHits(await store.search(activeId, q));
+      setSearched(true);
+    } catch (err) {
+      report(err);
+    }
+  }
+
   const active = projects.find((p) => p.id === activeId);
   const activeReq = requirements.find((r) => r.id === activeReqId);
   const activeCase = testCases.find((c) => c.id === activeCaseId);
@@ -1098,6 +1113,22 @@ export default function App() {
               ))}
             </ul>
             {runs.length === 0 ? <p className="muted">No runs yet.</p> : null}
+          </>
+        )}
+
+        {tab === 'search' && (
+          <>
+            <form className="row" onSubmit={runSearch}>
+              <input type="text" name="q" placeholder="Search docs, memory, tasks" />
+              <button className="go" type="submit">Search</button>
+            </form>
+            <p className="muted">Ranked full-text search in the desktop app, substring fallback in the browser. Results are display-only in v0 — open the matching tab to act.</p>
+            <ul className="clean">
+              {searchHits.map((h) => (
+                <li key={`${h.kind}:${h.id}`}><span className="pill">{h.kind}</span> {h.title}{h.snippet ? <span className="muted"> — {h.snippet}</span> : null}</li>
+              ))}
+            </ul>
+            {searched && searchHits.length === 0 ? <p className="muted">No matches.</p> : null}
           </>
         )}
 

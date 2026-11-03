@@ -157,3 +157,19 @@ describe('agents + runs + jobs ledger', () => {
     expect(again?.attempts).toBe(2);
   });
 });
+
+describe('search fallback', () => {
+  it('matches docs, memory and tasks case-insensitively', async () => {
+    const store = new BrowserStore();
+    const p = await store.createProject({ name: 'S1' });
+    await store.createDoc(p.id, 'Quarterly report', 'Revenue grew.');
+    await store.appendMemory(p.id, 'note', 'Discussed quarterly goals.');
+    await store.createTask(p.id, 'Write quarterly summary');
+    await store.createTask(p.id, 'Unrelated chore');
+    const hits = await store.search(p.id, 'QUARTERLY');
+    expect(hits.map((h) => h.kind).sort()).toEqual(['doc', 'memory', 'task']);
+    expect(hits.find((h) => h.kind === 'doc')?.snippet).toContain('Revenue');
+    expect(await store.search(p.id, 'zzz-no-match')).toEqual([]);
+    expect(await store.search(p.id, '   ')).toEqual([]);
+  });
+});

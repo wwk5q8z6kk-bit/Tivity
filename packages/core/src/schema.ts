@@ -256,4 +256,37 @@ export const MIGRATIONS: string[] = [
   `CREATE INDEX IF NOT EXISTS idx_agents_project ON agents (project_id)`,
   `CREATE INDEX IF NOT EXISTS idx_runs_project ON agent_runs (project_id)`,
   `CREATE INDEX IF NOT EXISTS idx_jobs_claim ON jobs (project_id, status, run_after)`,
+  `CREATE VIRTUAL TABLE IF NOT EXISTS docs_fts USING fts5(title, body, content='docs', content_rowid='rowid')`,
+  `CREATE TRIGGER IF NOT EXISTS docs_fts_insert AFTER INSERT ON docs BEGIN
+     INSERT INTO docs_fts(rowid, title, body) VALUES (new.rowid, new.title, new.body);
+   END`,
+  `CREATE TRIGGER IF NOT EXISTS docs_fts_delete AFTER DELETE ON docs BEGIN
+     INSERT INTO docs_fts(docs_fts, rowid, title, body) VALUES ('delete', old.rowid, old.title, old.body);
+   END`,
+  `CREATE TRIGGER IF NOT EXISTS docs_fts_update AFTER UPDATE ON docs BEGIN
+     INSERT INTO docs_fts(docs_fts, rowid, title, body) VALUES ('delete', old.rowid, old.title, old.body);
+     INSERT INTO docs_fts(rowid, title, body) VALUES (new.rowid, new.title, new.body);
+   END`,
+  `CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts USING fts5(kind, content, content='memory_entries', content_rowid='rowid')`,
+  `CREATE TRIGGER IF NOT EXISTS memory_fts_insert AFTER INSERT ON memory_entries BEGIN
+     INSERT INTO memory_fts(rowid, kind, content) VALUES (new.rowid, new.kind, new.content);
+   END`,
+  `CREATE TRIGGER IF NOT EXISTS memory_fts_delete AFTER DELETE ON memory_entries BEGIN
+     INSERT INTO memory_fts(memory_fts, rowid, kind, content) VALUES ('delete', old.rowid, old.kind, old.content);
+   END`,
+  `CREATE TRIGGER IF NOT EXISTS memory_fts_update AFTER UPDATE ON memory_entries BEGIN
+     INSERT INTO memory_fts(memory_fts, rowid, kind, content) VALUES ('delete', old.rowid, old.kind, old.content);
+     INSERT INTO memory_fts(rowid, kind, content) VALUES (new.rowid, new.kind, new.content);
+   END`,
+  `CREATE VIRTUAL TABLE IF NOT EXISTS tasks_fts USING fts5(title, content='tasks', content_rowid='rowid')`,
+  `CREATE TRIGGER IF NOT EXISTS tasks_fts_insert AFTER INSERT ON tasks BEGIN
+     INSERT INTO tasks_fts(rowid, title) VALUES (new.rowid, new.title);
+   END`,
+  `CREATE TRIGGER IF NOT EXISTS tasks_fts_delete AFTER DELETE ON tasks BEGIN
+     INSERT INTO tasks_fts(tasks_fts, rowid, title) VALUES ('delete', old.rowid, old.title);
+   END`,
+  `CREATE TRIGGER IF NOT EXISTS tasks_fts_update AFTER UPDATE ON tasks BEGIN
+     INSERT INTO tasks_fts(tasks_fts, rowid, title) VALUES ('delete', old.rowid, old.title);
+     INSERT INTO tasks_fts(rowid, title) VALUES (new.rowid, new.title);
+   END`,
 ];

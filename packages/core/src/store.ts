@@ -1,6 +1,19 @@
 import type { Agent, AgentRun, Decision, DesignComponent, Doc, EvidenceItem, ExternalRef, ImpactItem, Job, Link, MemoryEntry, Milestone, MonitorCheck, Project, PullRequest, QualityGate, Release, Requirement, RequirementVersion, Screen, SecurityFinding, Sprint, SyncState, Task, TestCase, TestRun } from './types';
 import { MIGRATIONS } from './schema';
 import { findImpacted } from './links';
+import {
+  DOCS_FTS_SQL,
+  DOCS_LIKE_SQL,
+  MEMORY_FTS_SQL,
+  MEMORY_LIKE_SQL,
+  TASKS_FTS_SQL,
+  TASKS_LIKE_SQL,
+  isSearchable,
+  toHits,
+  toLikePattern,
+  toMatchQuery,
+  type SearchHit,
+} from './search';
 
 // One Store interface, two backends: real SQLite inside Tauri and a
 // localStorage fallback so `pnpm dev` works in a plain browser too.
@@ -75,6 +88,7 @@ export interface Store {
   claimDueJob(projectId: string, nowMs: number): Promise<Job | null>;
   completeJob(id: string, status: 'done' | 'failed', result: string): Promise<void>;
   requeueJob(id: string, runAfter: number): Promise<void>;
+  search(projectId: string, query: string): Promise<SearchHit[]>;
 }
 
 export interface SqlDb {
@@ -123,11 +137,14 @@ interface MonitorCheckRow { id: string; project_id: string; name: string; status
 interface AgentRow { id: string; project_id: string; name: string; role: string; model: string; status: string; created_at: number; updated_at: number }
 interface AgentRunRow { id: string; project_id: string; agent_id: string; job_id: string | null; status: string; summary: string; started_at: number; finished_at: number | null }
 interface JobRow { id: string; project_id: string; type: string; payload: string; status: string; attempts: number; run_after: number; lease_until: number | null; result: string; created_at: number; updated_at: number }
+interface SearchResultRow { id: string; title: string; snippet: string }
 
 const toStatus = (s: string): Task['status'] =>
   s === 'doing' || s === 'done' ? s : 'todo';
 
 export class TauriStore implements Store {
+  private ftsAvailable = true;
+
   constructor(private db: SqlDb) {}
 
   async migrate(): Promise<void> {
@@ -136,7 +153,15 @@ export class TauriStore implements Store {
     await this.db.execute('PRAGMA journal_mode=WAL');
     await this.db.execute('PRAGMA busy_timeout=5000');
     await this.db.execute('PRAGMA foreign_keys=ON');
-    for (const sql of MIGRATIONS) await this.db.execute(sql);
+    for (const sql of MIGRATIONS) {
+      try {
+        await this.db.execute(sql);
+      } catch (err) {
+        // FTS is optional: without it search falls back to LIKE.
+        if (!sql.includes('_fts')) throw err;
+        this.ftsAvailable = false;
+      }
+    }
   }
 
   async listProjects(): Promise<Project[]> {
@@ -707,6 +732,30 @@ export class TauriStore implements Store {
   async requeueJob(id: string, runAfter: number): Promise<void> {
     await this.db.execute('UPDATE jobs SET status = ?, run_after = ?, lease_until = ?, updated_at = ? WHERE id = ?', ['queued', runAfter, null, now(), id]);
   }
+
+  async search(projectId: string, query: string): Promise<SearchHit[]> {
+    if (!isSearchable(query)) return [];
+    if (this.ftsAvailable) {
+      try {
+        const match = toMatchQuery(query);
+        const [docs, mem, tasks] = await Promise.all([
+          this.db.select<SearchResultRow[]>(DOCS_FTS_SQL, [match, projectId]),
+          this.db.select<SearchResultRow[]>(MEMORY_FTS_SQL, [match, projectId]),
+          this.db.select<SearchResultRow[]>(TASKS_FTS_SQL, [match, projectId]),
+        ]);
+        return [...toHits('doc', docs), ...toHits('memory', mem), ...toHits('task', tasks)];
+      } catch {
+        this.ftsAvailable = false;
+      }
+    }
+    const pattern = toLikePattern(query);
+    const [docs, mem, tasks] = await Promise.all([
+      this.db.select<SearchResultRow[]>(DOCS_LIKE_SQL, [projectId, pattern, pattern]),
+      this.db.select<SearchResultRow[]>(MEMORY_LIKE_SQL, [projectId, pattern, pattern]),
+      this.db.select<SearchResultRow[]>(TASKS_LIKE_SQL, [projectId, pattern]),
+    ]);
+    return [...toHits('doc', docs), ...toHits('memory', mem), ...toHits('task', tasks)];
+  }
 }
 
 function toJob(r: JobRow): Job {
@@ -1224,6 +1273,35 @@ export class BrowserStore implements Store {
       job.updatedAt = now();
       this.save();
     }
+  }
+
+  async search(projectId: string, query: string): Promise<SearchHit[]> {
+    if (!isSearchable(query)) return [];
+    const needle = query.trim().toLowerCase();
+    const window = (text: string): string => {
+      const i = text.toLowerCase().indexOf(needle);
+      if (i < 0) return text.slice(0, 120);
+      const start = Math.max(0, i - 40);
+      const end = Math.min(text.length, i + needle.length + 40);
+      return `${start > 0 ? '…' : ''}${text.slice(start, end)}${end < text.length ? '…' : ''}`;
+    };
+    const hits: SearchHit[] = [];
+    for (const d of this.data.docs.filter((x) => x.projectId === projectId)) {
+      if (d.title.toLowerCase().includes(needle) || d.body.toLowerCase().includes(needle)) {
+        hits.push({ kind: 'doc', id: d.id, title: d.title, snippet: window(d.body || d.title) });
+      }
+    }
+    for (const m of this.data.memory.filter((x) => x.projectId === projectId)) {
+      if (m.kind.toLowerCase().includes(needle) || m.content.toLowerCase().includes(needle)) {
+        hits.push({ kind: 'memory', id: m.id, title: `${m.kind}: ${m.content.slice(0, 60)}`, snippet: window(m.content) });
+      }
+    }
+    for (const t of this.data.tasks.filter((x) => x.projectId === projectId)) {
+      if (t.title.toLowerCase().includes(needle)) {
+        hits.push({ kind: 'task', id: t.id, title: t.title, snippet: '' });
+      }
+    }
+    return hits.slice(0, 60);
   }
 }
 
