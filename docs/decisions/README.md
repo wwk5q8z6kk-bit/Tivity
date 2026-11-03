@@ -245,6 +245,26 @@ Dissent/caveat: Agent-loop-with-model and provider billing are still unverified
 (no keys in session) — M4b needs provider choice + keys before LLM handlers ship.
 Evidence: mastra.test.ts (passing) + installed tool.d.ts contract.
 
+## 0018 — Push sync — DECIDED: Tivity-wins push on PAT, per-task cursors
+
+| Option | Score notes | Verdict |
+|---|---|---|
+| Push: new tasks → issues.create; linked tasks → issues.update only when status drifted from a per-task push cursor | Effort 4, robustness 4 (fake-client tested, per-item 404 tolerance) | CHOSEN for M2c |
+| Always-update every linked task | Wastes rate limit, noisy issue timelines | Rejected |
+| Per-task cursor in sync_state (`push:{taskId}` → last status) | Zero new tables, reuses tested upsert | CHOSEN over a new push_state table |
+| Tivity-wins conflicts, documented; pull-then-push recommended flow | Honest, simple; true merge needs the App + webhook design | CHOSEN for v0 |
+| GitHub App now | Needs user-side App registration + public webhook URL — impossible to complete in-session | Still deferred (0007); exact user steps recorded in M2c notes below |
+
+Decisive factors: no redundant API calls (cursor compare) + per-item error
+tolerance (one 404 never aborts the push) + no new tables.
+Auth: single-user fine-grained PAT (issues: read+write), memory-only, same as pull.
+Evidence: Octokit REST issues.create/update (0007 inspection).
+
+M2c App-path notes (for the owner, when ready): create a GitHub App with
+issues read/write + metadata, install on target repos, run a small webhook
+receiver for issue events into sync_state cursors, then flip push/pull auth
+from PAT to installation tokens. Nothing in the v0 schema blocks this.
+
 ## Roadmap (from workflow synthesis, surface-adjusted)
 
 - M0 scaffold + core tables + links + impact check (S0+S1 slice) — SHIPPED and verified
@@ -252,7 +272,8 @@ Evidence: mastra.test.ts (passing) + installed tool.d.ts contract.
 - M2a delivery entities + sync-ready refs (S6 slice) — SHIPPED and verified
 - M3 design registry + quality/security/monitoring (S4+S9) — SHIPPED and verified
 - M2b monorepo split + GitHub pull sync, single-user PAT (S5+S6 slice) — SHIPPED and verified
-- M2c GitHub push sync + App auth (needs owner auth decision, 0007)
+- M2c GitHub push sync on PAT (S5 slice) — SHIPPED and verified
+- M2d GitHub App auth + webhooks (needs user-side App setup, see 0018 notes)
 - M4a local audited agent runtime: jobs ledger + runs + rule handlers (S7 slice) — SHIPPED and verified
 - M4b LLM handlers (needs 0017 Mastra verdict + provider keys)
 - M4 agent runtime on Mastra + AWR substrate, audited runs (S7)

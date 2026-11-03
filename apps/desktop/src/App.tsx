@@ -607,23 +607,30 @@ export default function App() {
     }
   }
 
-  async function pullNow(e: FormEvent<HTMLFormElement>): Promise<void> {
+  async function syncNow(e: FormEvent<HTMLFormElement>): Promise<void> {
     e.preventDefault();
     if (!store || !activeId || syncing) return;
     const fd = new FormData(e.currentTarget);
     const owner = String(fd.get('owner') ?? '').trim();
     const repo = String(fd.get('repo') ?? '').trim();
     const token = String(fd.get('token') ?? '').trim();
+    const action = String(fd.get('action') ?? 'pull');
     if (!owner || !repo || !token) {
       setSyncResult('Owner, repo and token are all required.');
       return;
     }
     setSyncing(true);
-    setSyncResult('Pulling…');
+    setSyncResult(action === 'push' ? 'Pushing…' : 'Pulling…');
     try {
-      const { createOctokitClient, pullIssuesToTasks } = await import('@tivity/github-sync');
-      const r = await pullIssuesToTasks(store, createOctokitClient(token), activeId, owner, repo);
-      setSyncResult(`Pulled ${owner}/${repo}: ${r.created} new tasks, ${r.skipped} already linked. (${r.cursor})`);
+      const { createOctokitClient, pullIssuesToTasks, pushTasksToIssues } = await import('@tivity/github-sync');
+      const client = createOctokitClient(token);
+      if (action === 'push') {
+        const r = await pushTasksToIssues(store, client, activeId, owner, repo);
+        setSyncResult(`Pushed to ${owner}/${repo}: ${r.created} created, ${r.updated} updated, ${r.skipped} unchanged, ${r.errors.length} errors.${r.errors.length > 0 ? ` First error: ${r.errors[0]}` : ''}`);
+      } else {
+        const r = await pullIssuesToTasks(store, client, activeId, owner, repo);
+        setSyncResult(`Pulled ${owner}/${repo}: ${r.created} new tasks, ${r.skipped} already linked. (${r.cursor})`);
+      }
       await reloadActive();
     } catch (err) {
       setSyncResult(`Sync failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -1005,13 +1012,14 @@ export default function App() {
 
         {tab === 'sync' && (
           <>
-            <p className="muted">Pull-only: GitHub issues become linked tasks. Push sync arrives with the App decision (0007). Your token stays in memory — it is never stored.</p>
-            <form className="card" onSubmit={pullNow}>
+            <p className="muted">Two-way on a fine-grained PAT: pull turns issues into linked tasks; push creates missing issues and mirrors task status (Tivity wins — pull first). App auth with webhooks is still to come (M2d). Your token stays in memory — it is never stored.</p>
+            <form className="card" onSubmit={syncNow}>
               <div className="row">
                 <input type="text" name="owner" placeholder="owner" style={{ maxWidth: 160 }} />
                 <input type="text" name="repo" placeholder="repo" style={{ maxWidth: 160 }} />
-                <input type="password" name="token" placeholder="fine-grained PAT (issues: read)" />
-                <button className="go" type="submit" disabled={syncing}>Pull issues</button>
+                <input type="password" name="token" placeholder="fine-grained PAT (issues: read+write)" />
+                <button className="go" type="submit" name="action" value="pull" disabled={syncing}>Pull issues</button>
+                <button className="ghost" type="submit" name="action" value="push" disabled={syncing}>Push tasks</button>
               </div>
             </form>
             {syncResult ? <p>{syncResult}</p> : null}

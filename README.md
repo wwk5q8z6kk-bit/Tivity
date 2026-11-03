@@ -41,10 +41,11 @@ Decisions with scored options: [docs/decisions/README.md](docs/decisions/README.
 
 Root commands fan out: `pnpm typecheck` (all packages), `pnpm test` (core + sync suites).
 
-## GitHub sync (pull-only v0)
+## GitHub sync (two-way on PAT)
 
-Open the Sync tab, enter owner/repo plus a fine-grained PAT with issues:read,
-and pull. Issues become tasks linked to `owner/repo#number` refs; re-pulls skip
-already-linked issues and record a cursor. Push sync arrives with the App-auth
-decision (0007/M2c). The token is held in memory only and never stored.
+Open the Sync tab, enter owner/repo plus a fine-grained PAT with issues:read
+(pull) or read+write (push). Pull turns issues into linked tasks (closed issues
+arrive done); push creates missing issues and mirrors task status — Tivity wins
+conflicts, so pull first. The token is held in memory only and never stored.
+App auth with webhooks is still to come (M2d).
 App icons are generated placeholders — replace before any public release.

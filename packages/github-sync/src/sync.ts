@@ -18,9 +18,14 @@ export interface IssuesClient {
   listIssues(owner: string, repo: string): Promise<GitHubIssue[]>;
 }
 
+export interface PushClient {
+  createIssue(owner: string, repo: string, input: { title: string; body: string }): Promise<{ number: number }>;
+  updateIssue(owner: string, repo: string, number: number, input: { state: 'open' | 'closed' }): Promise<void>;
+}
+
 const ThrottledOctokit = Octokit.plugin(retry, throttling);
 
-export function createOctokitClient(token: string): IssuesClient {
+export function createOctokitClient(token: string): IssuesClient & PushClient {
   const octokit = new ThrottledOctokit({
     auth: token,
     throttle: {
@@ -45,6 +50,13 @@ export function createOctokitClient(token: string): IssuesClient {
           body: it.body ?? '',
           url: it.html_url,
         }));
+    },
+    async createIssue(owner: string, repo: string, input: { title: string; body: string }): Promise<{ number: number }> {
+      const res = await octokit.rest.issues.create({ owner, repo, title: input.title, body: input.body });
+      return { number: res.data.number };
+    },
+    async updateIssue(owner: string, repo: string, number: number, input: { state: 'open' | 'closed' }): Promise<void> {
+      await octokit.rest.issues.update({ owner, repo, issue_number: number, state: input.state });
     },
   };
 }
@@ -76,12 +88,16 @@ export async function pullIssuesToTasks(
       continue;
     }
     const task = await store.createTask(projectId, `[#${issue.number}] ${issue.title}`);
+    const issueState = issue.state === 'closed' ? 'closed' : 'open';
+    if (issueState === 'closed') await store.setTaskStatus(task.id, 'done');
     await store.addExternalRef(projectId, {
       entityKind: 'task',
       entityId: task.id,
       service: 'github',
       externalId,
     });
+    // Seed the push cursor so the next push skips already-matching tasks.
+    await store.setSyncState(projectId, `push:${task.id}`, issueState);
     known.add(externalId);
     created += 1;
   }
@@ -93,4 +109,81 @@ export async function pullIssuesToTasks(
     `Pulled ${owner}/${repo}: ${created} new, ${skipped} already linked.`,
   );
   return { created, skipped, cursor };
+}
+
+export interface PushResult {
+  created: number;
+  updated: number;
+  skipped: number;
+  errors: string[];
+}
+
+// Tivity-wins push: tasks without a github ref become issues; linked tasks
+// update only when local status drifted from the per-task push cursor.
+// Per-item failures are collected, never aborting the push.
+export async function pushTasksToIssues(
+  store: Store,
+  client: PushClient,
+  projectId: string,
+  owner: string,
+  repo: string,
+): Promise<PushResult> {
+  const [tasks, refs] = await Promise.all([
+    store.listTasks(projectId),
+    store.listExternalRefs(projectId),
+  ]);
+  const byTask = new Map(
+    refs
+      .filter((r) => r.service === 'github' && r.entityKind === 'task')
+      .map((r) => [r.entityId, r.externalId]),
+  );
+  let created = 0;
+  let updated = 0;
+  let skipped = 0;
+  const errors: string[] = [];
+  for (const task of tasks) {
+    const ref = byTask.get(task.id);
+    const wantState = task.status === 'done' ? 'closed' : 'open';
+    try {
+      if (!ref) {
+        const issue = await client.createIssue(owner, repo, {
+          title: task.title,
+          body: `Synced from Tivity task ${task.id}.`,
+        });
+        await store.addExternalRef(projectId, {
+          entityKind: 'task',
+          entityId: task.id,
+          service: 'github',
+          externalId: `${owner}/${repo}#${issue.number}`,
+        });
+        if (wantState === 'closed') {
+          await client.updateIssue(owner, repo, issue.number, { state: 'closed' });
+        }
+        await store.setSyncState(projectId, `push:${task.id}`, wantState);
+        created += 1;
+      } else {
+        const cursor = await store.getSyncState(`push:${task.id}`);
+        if (cursor?.cursor === wantState) {
+          skipped += 1;
+          continue;
+        }
+        const number = parseInt(ref.split('#')[1] ?? '', 10);
+        if (!Number.isFinite(number)) {
+          errors.push(`${task.title}: bad ref ${ref}`);
+          continue;
+        }
+        await client.updateIssue(owner, repo, number, { state: wantState });
+        await store.setSyncState(projectId, `push:${task.id}`, wantState);
+        updated += 1;
+      }
+    } catch (err) {
+      errors.push(`${task.title}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+  await store.appendMemory(
+    projectId,
+    'sync',
+    `Pushed to ${owner}/${repo}: ${created} created, ${updated} updated, ${skipped} unchanged, ${errors.length} errors.`,
+  );
+  return { created, updated, skipped, errors };
 }
