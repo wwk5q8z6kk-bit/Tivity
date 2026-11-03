@@ -2,7 +2,7 @@
 
 One workspace. One source of truth. Every project. Every stage. Every agent.
 
-Status: M0–M1 shipped and verified (requirements versioning + propagation queue + evidence + why-memory). Build target is a launchable app —
+Status: M0–M2a shipped and verified (delivery: sprints, milestones, PRs, releases, external refs). Build target is a launchable app —
 task owner chose "whatever is best, most efficient, robust, and AI-native."
 
 Decisions so far:

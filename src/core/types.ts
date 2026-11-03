@@ -9,7 +9,11 @@ export type EntityKind =
   | 'task'
   | 'decision'
   | 'memory'
-  | 'evidence';
+  | 'evidence'
+  | 'sprint'
+  | 'milestone'
+  | 'pull_request'
+  | 'release';
 
 export interface Project {
   id: string;
@@ -105,4 +109,61 @@ export interface ImpactItem {
   status: 'pending' | 'accepted' | 'dismissed';
   createdAt: number;
   resolvedAt: number | null;
+}
+
+export interface Sprint {
+  id: string;
+  projectId: string;
+  name: string;
+  status: 'planned' | 'active' | 'closed';
+  startsAt: number | null;
+  endsAt: number | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface Milestone {
+  id: string;
+  projectId: string;
+  name: string;
+  dueAt: number | null;
+  status: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface PullRequest {
+  id: string;
+  projectId: string;
+  title: string;
+  status: 'open' | 'merged' | 'closed';
+  branch: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface Release {
+  id: string;
+  projectId: string;
+  name: string;
+  notes: string;
+  status: string;
+  createdAt: number;
+}
+
+export interface ExternalRef {
+  id: string;
+  projectId: string;
+  entityKind: EntityKind;
+  entityId: string;
+  service: string;
+  externalId: string;
+  createdAt: number;
+}
+
+export interface SyncState {
+  key: string;
+  projectId: string;
+  cursor: string;
+  updatedAt: number;
 }

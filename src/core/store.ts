@@ -1,4 +1,4 @@
-import type { Decision, Doc, EvidenceItem, ImpactItem, Link, MemoryEntry, Project, Requirement, RequirementVersion, Task } from './types';
+import type { Decision, Doc, EvidenceItem, ExternalRef, ImpactItem, Link, MemoryEntry, Milestone, Project, PullRequest, Release, Requirement, RequirementVersion, Sprint, SyncState, Task } from './types';
 import { MIGRATIONS } from './schema';
 import { findImpacted } from './links';
 
@@ -33,6 +33,20 @@ export interface Store {
   addEvidence(projectId: string, input: { title: string; source?: string; detail?: string }): Promise<EvidenceItem>;
   listImpact(projectId: string): Promise<ImpactItem[]>;
   resolveImpact(id: string, status: 'accepted' | 'dismissed'): Promise<void>;
+  listSprints(projectId: string): Promise<Sprint[]>;
+  createSprint(projectId: string, input: { name: string }): Promise<Sprint>;
+  setSprintStatus(id: string, status: Sprint['status']): Promise<void>;
+  listMilestones(projectId: string): Promise<Milestone[]>;
+  createMilestone(projectId: string, name: string): Promise<Milestone>;
+  listPullRequests(projectId: string): Promise<PullRequest[]>;
+  createPullRequest(projectId: string, input: { title: string; branch?: string }): Promise<PullRequest>;
+  setPullRequestStatus(id: string, status: PullRequest['status']): Promise<void>;
+  listReleases(projectId: string): Promise<Release[]>;
+  createRelease(projectId: string, input: { name: string; notes?: string }): Promise<Release>;
+  listExternalRefs(projectId: string): Promise<ExternalRef[]>;
+  addExternalRef(projectId: string, input: { entityKind: ExternalRef['entityKind']; entityId: string; service: string; externalId: string }): Promise<ExternalRef>;
+  getSyncState(key: string): Promise<SyncState | null>;
+  setSyncState(projectId: string, key: string, cursor: string): Promise<void>;
 }
 
 interface SqlDb {
@@ -56,6 +70,12 @@ interface RequirementRow { id: string; project_id: string; title: string; status
 interface RequirementVersionRow { id: string; requirement_id: string; version: number; body: string; acceptance: string; created_at: number }
 interface EvidenceRow { id: string; project_id: string; title: string; source: string; detail: string; created_at: number }
 interface ImpactRow { id: string; project_id: string; trigger_kind: ImpactItem['triggerKind']; trigger_id: string; entity_kind: ImpactItem['entityKind']; entity_id: string; reason: string; status: string; created_at: number; resolved_at: number | null }
+interface SprintRow { id: string; project_id: string; name: string; status: string; starts_at: number | null; ends_at: number | null; created_at: number; updated_at: number }
+interface MilestoneRow { id: string; project_id: string; name: string; due_at: number | null; status: string; created_at: number; updated_at: number }
+interface PullRequestRow { id: string; project_id: string; title: string; status: string; branch: string; created_at: number; updated_at: number }
+interface ReleaseRow { id: string; project_id: string; name: string; notes: string; status: string; created_at: number }
+interface ExternalRefRow { id: string; project_id: string; entity_kind: ExternalRef['entityKind']; entity_id: string; service: string; external_id: string; created_at: number }
+interface SyncStateRow { key: string; project_id: string; cursor: string; updated_at: number }
 
 const toStatus = (s: string): Task['status'] =>
   s === 'doing' || s === 'done' ? s : 'todo';
@@ -278,6 +298,126 @@ class TauriStore implements Store {
   async resolveImpact(id: string, status: 'accepted' | 'dismissed'): Promise<void> {
     await this.db.execute('UPDATE impact_queue SET status = ?, resolved_at = ? WHERE id = ?', [status, now(), id]);
   }
+
+  async listSprints(projectId: string): Promise<Sprint[]> {
+    const rows = await this.db.select<SprintRow[]>(
+      'SELECT * FROM sprints WHERE project_id = ? ORDER BY created_at ASC', [projectId]);
+    return rows.map((r) => ({
+      id: r.id, projectId: r.project_id, name: r.name,
+      status: r.status === 'active' || r.status === 'closed' ? r.status : 'planned',
+      startsAt: r.starts_at, endsAt: r.ends_at, createdAt: r.created_at, updatedAt: r.updated_at,
+    }));
+  }
+
+  async createSprint(projectId: string, input: { name: string }): Promise<Sprint> {
+    const t = now();
+    const s: Sprint = { id: uid(), projectId, name: input.name, status: 'planned', startsAt: null, endsAt: null, createdAt: t, updatedAt: t };
+    await this.db.execute(
+      'INSERT INTO sprints (id, project_id, name, status, starts_at, ends_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [s.id, s.projectId, s.name, s.status, s.startsAt, s.endsAt, s.createdAt, s.updatedAt],
+    );
+    await this.note(projectId, 'delivery', `Sprint created: ${s.name}.`);
+    return s;
+  }
+
+  async setSprintStatus(id: string, status: Sprint['status']): Promise<void> {
+    await this.db.execute('UPDATE sprints SET status = ?, updated_at = ? WHERE id = ?', [status, now(), id]);
+  }
+
+  async listMilestones(projectId: string): Promise<Milestone[]> {
+    const rows = await this.db.select<MilestoneRow[]>(
+      'SELECT * FROM milestones WHERE project_id = ? ORDER BY created_at ASC', [projectId]);
+    return rows.map((r) => ({
+      id: r.id, projectId: r.project_id, name: r.name, dueAt: r.due_at,
+      status: r.status, createdAt: r.created_at, updatedAt: r.updated_at,
+    }));
+  }
+
+  async createMilestone(projectId: string, name: string): Promise<Milestone> {
+    const t = now();
+    const m: Milestone = { id: uid(), projectId, name, dueAt: null, status: 'open', createdAt: t, updatedAt: t };
+    await this.db.execute(
+      'INSERT INTO milestones (id, project_id, name, due_at, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [m.id, m.projectId, m.name, m.dueAt, m.status, m.createdAt, m.updatedAt],
+    );
+    await this.note(projectId, 'delivery', `Milestone created: ${m.name}.`);
+    return m;
+  }
+
+  async listPullRequests(projectId: string): Promise<PullRequest[]> {
+    const rows = await this.db.select<PullRequestRow[]>(
+      'SELECT * FROM pull_requests WHERE project_id = ? ORDER BY created_at DESC', [projectId]);
+    return rows.map((r) => ({
+      id: r.id, projectId: r.project_id, title: r.title,
+      status: r.status === 'merged' || r.status === 'closed' ? r.status : 'open',
+      branch: r.branch, createdAt: r.created_at, updatedAt: r.updated_at,
+    }));
+  }
+
+  async createPullRequest(projectId: string, input: { title: string; branch?: string }): Promise<PullRequest> {
+    const t = now();
+    const p: PullRequest = { id: uid(), projectId, title: input.title, status: 'open', branch: input.branch ?? '', createdAt: t, updatedAt: t };
+    await this.db.execute(
+      'INSERT INTO pull_requests (id, project_id, title, status, branch, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [p.id, p.projectId, p.title, p.status, p.branch, p.createdAt, p.updatedAt],
+    );
+    await this.note(projectId, 'delivery', `Pull request opened: ${p.title}.`);
+    return p;
+  }
+
+  async setPullRequestStatus(id: string, status: PullRequest['status']): Promise<void> {
+    await this.db.execute('UPDATE pull_requests SET status = ?, updated_at = ? WHERE id = ?', [status, now(), id]);
+  }
+
+  async listReleases(projectId: string): Promise<Release[]> {
+    const rows = await this.db.select<ReleaseRow[]>(
+      'SELECT * FROM releases WHERE project_id = ? ORDER BY created_at DESC', [projectId]);
+    return rows.map((r) => ({
+      id: r.id, projectId: r.project_id, name: r.name,
+      notes: r.notes, status: r.status, createdAt: r.created_at,
+    }));
+  }
+
+  async createRelease(projectId: string, input: { name: string; notes?: string }): Promise<Release> {
+    const r: Release = { id: uid(), projectId, name: input.name, notes: input.notes ?? '', status: 'draft', createdAt: now() };
+    await this.db.execute(
+      'INSERT INTO releases (id, project_id, name, notes, status, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      [r.id, r.projectId, r.name, r.notes, r.status, r.createdAt],
+    );
+    await this.note(projectId, 'delivery', `Release drafted: ${r.name}.`);
+    return r;
+  }
+
+  async listExternalRefs(projectId: string): Promise<ExternalRef[]> {
+    const rows = await this.db.select<ExternalRefRow[]>(
+      'SELECT * FROM external_refs WHERE project_id = ? ORDER BY created_at ASC', [projectId]);
+    return rows.map((r) => ({
+      id: r.id, projectId: r.project_id, entityKind: r.entity_kind, entityId: r.entity_id,
+      service: r.service, externalId: r.external_id, createdAt: r.created_at,
+    }));
+  }
+
+  async addExternalRef(projectId: string, input: { entityKind: ExternalRef['entityKind']; entityId: string; service: string; externalId: string }): Promise<ExternalRef> {
+    const r: ExternalRef = { id: uid(), projectId, ...input, createdAt: now() };
+    await this.db.execute(
+      'INSERT INTO external_refs (id, project_id, entity_kind, entity_id, service, external_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [r.id, r.projectId, r.entityKind, r.entityId, r.service, r.externalId, r.createdAt],
+    );
+    return r;
+  }
+
+  async getSyncState(key: string): Promise<SyncState | null> {
+    const rows = await this.db.select<SyncStateRow[]>('SELECT * FROM sync_state WHERE key = ?', [key]);
+    const r = rows[0];
+    return r ? { key: r.key, projectId: r.project_id, cursor: r.cursor, updatedAt: r.updated_at } : null;
+  }
+
+  async setSyncState(projectId: string, key: string, cursor: string): Promise<void> {
+    await this.db.execute(
+      'INSERT INTO sync_state (key, project_id, cursor, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(key) DO UPDATE SET cursor = excluded.cursor, updated_at = excluded.updated_at',
+      [key, projectId, cursor, now()],
+    );
+  }
 }
 
 interface Dump {
@@ -291,12 +431,18 @@ interface Dump {
   requirementVersions: RequirementVersion[];
   evidence: EvidenceItem[];
   impact: ImpactItem[];
+  sprints: Sprint[];
+  milestones: Milestone[];
+  pullRequests: PullRequest[];
+  releases: Release[];
+  externalRefs: ExternalRef[];
+  syncState: SyncState[];
 }
 
 const FALLBACK_KEY = 'tivity-fallback-v1';
 
 function loadDump(): Dump {
-  const empty: Dump = { projects: [], tasks: [], docs: [], decisions: [], memory: [], links: [], requirements: [], requirementVersions: [], evidence: [], impact: [] };
+  const empty: Dump = { projects: [], tasks: [], docs: [], decisions: [], memory: [], links: [], requirements: [], requirementVersions: [], evidence: [], impact: [], sprints: [], milestones: [], pullRequests: [], releases: [], externalRefs: [], syncState: [] };
   try {
     if (typeof localStorage === 'undefined') return empty;
     const raw = localStorage.getItem(FALLBACK_KEY);
@@ -462,6 +608,101 @@ export class BrowserStore implements Store {
       this.save();
     }
   }
+
+  async listSprints(projectId: string): Promise<Sprint[]> {
+    return this.data.sprints.filter((s) => s.projectId === projectId).sort((a, b) => a.createdAt - b.createdAt);
+  }
+
+  async createSprint(projectId: string, input: { name: string }): Promise<Sprint> {
+    const t = now();
+    const s: Sprint = { id: uid(), projectId, name: input.name, status: 'planned', startsAt: null, endsAt: null, createdAt: t, updatedAt: t };
+    this.data.sprints.push(s);
+    this.note(projectId, 'delivery', `Sprint created: ${s.name}.`);
+    this.save();
+    return s;
+  }
+
+  async setSprintStatus(id: string, status: Sprint['status']): Promise<void> {
+    const s = this.data.sprints.find((x) => x.id === id);
+    if (s) {
+      s.status = status;
+      s.updatedAt = now();
+      this.save();
+    }
+  }
+
+  async listMilestones(projectId: string): Promise<Milestone[]> {
+    return this.data.milestones.filter((m) => m.projectId === projectId).sort((a, b) => a.createdAt - b.createdAt);
+  }
+
+  async createMilestone(projectId: string, name: string): Promise<Milestone> {
+    const t = now();
+    const m: Milestone = { id: uid(), projectId, name, dueAt: null, status: 'open', createdAt: t, updatedAt: t };
+    this.data.milestones.push(m);
+    this.note(projectId, 'delivery', `Milestone created: ${m.name}.`);
+    this.save();
+    return m;
+  }
+
+  async listPullRequests(projectId: string): Promise<PullRequest[]> {
+    return this.data.pullRequests.filter((p) => p.projectId === projectId).sort((a, b) => b.createdAt - a.createdAt);
+  }
+
+  async createPullRequest(projectId: string, input: { title: string; branch?: string }): Promise<PullRequest> {
+    const t = now();
+    const p: PullRequest = { id: uid(), projectId, title: input.title, status: 'open', branch: input.branch ?? '', createdAt: t, updatedAt: t };
+    this.data.pullRequests.push(p);
+    this.note(projectId, 'delivery', `Pull request opened: ${p.title}.`);
+    this.save();
+    return p;
+  }
+
+  async setPullRequestStatus(id: string, status: PullRequest['status']): Promise<void> {
+    const p = this.data.pullRequests.find((x) => x.id === id);
+    if (p) {
+      p.status = status;
+      p.updatedAt = now();
+      this.save();
+    }
+  }
+
+  async listReleases(projectId: string): Promise<Release[]> {
+    return this.data.releases.filter((r) => r.projectId === projectId).sort((a, b) => b.createdAt - a.createdAt);
+  }
+
+  async createRelease(projectId: string, input: { name: string; notes?: string }): Promise<Release> {
+    const r: Release = { id: uid(), projectId, name: input.name, notes: input.notes ?? '', status: 'draft', createdAt: now() };
+    this.data.releases.push(r);
+    this.note(projectId, 'delivery', `Release drafted: ${r.name}.`);
+    this.save();
+    return r;
+  }
+
+  async listExternalRefs(projectId: string): Promise<ExternalRef[]> {
+    return this.data.externalRefs.filter((r) => r.projectId === projectId).sort((a, b) => a.createdAt - b.createdAt);
+  }
+
+  async addExternalRef(projectId: string, input: { entityKind: ExternalRef['entityKind']; entityId: string; service: string; externalId: string }): Promise<ExternalRef> {
+    const r: ExternalRef = { id: uid(), projectId, ...input, createdAt: now() };
+    this.data.externalRefs.push(r);
+    this.save();
+    return r;
+  }
+
+  async getSyncState(key: string): Promise<SyncState | null> {
+    return this.data.syncState.find((s) => s.key === key) ?? null;
+  }
+
+  async setSyncState(projectId: string, key: string, cursor: string): Promise<void> {
+    const existing = this.data.syncState.find((s) => s.key === key);
+    if (existing) {
+      existing.cursor = cursor;
+      existing.updatedAt = now();
+    } else {
+      this.data.syncState.push({ key, projectId, cursor, updatedAt: now() });
+    }
+    this.save();
+  }
 }
 
 async function ensureSeeded(store: Store): Promise<void> {
@@ -479,6 +720,9 @@ async function ensureSeeded(store: Store): Promise<void> {
   const ev = await store.addEvidence(p.id, { title: 'Tauri vs Electron research', source: 'OpenReplay Dec 2025', detail: 'Tauri installer 2-10MB, idle 30-50MB; Electron 80-150MB, 150-300MB idle.' });
   await store.addLink(p.id, { fromKind: 'evidence', fromId: ev.id, toKind: 'requirement', toId: req.id, relation: 'justifies' });
   await store.addLink(p.id, { fromKind: 'requirement', fromId: req.id, toKind: 'task', toId: t.id, relation: 'drives' });
+  const sprint = await store.createSprint(p.id, { name: 'Sprint 1' });
+  await store.setSprintStatus(sprint.id, 'active');
+  await store.addLink(p.id, { fromKind: 'task', fromId: t.id, toKind: 'sprint', toId: sprint.id, relation: 'partOf' });
   await store.appendMemory(p.id, 'note', 'Seeded the welcome project.');
   await store.addLink(p.id, { fromKind: 'decision', fromId: d.id, toKind: 'task', toId: t.id, relation: 'drives' });
   await store.addLink(p.id, { fromKind: 'task', fromId: t.id, toKind: 'doc', toId: doc.id, relation: 'documents' });

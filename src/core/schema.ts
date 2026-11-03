@@ -98,4 +98,60 @@ export const MIGRATIONS: string[] = [
   `CREATE INDEX IF NOT EXISTS idx_req_versions_req ON requirement_versions (requirement_id)`,
   `CREATE INDEX IF NOT EXISTS idx_evidence_project ON evidence_items (project_id)`,
   `CREATE INDEX IF NOT EXISTS idx_impact_project ON impact_queue (project_id, status)`,
+  `CREATE TABLE IF NOT EXISTS sprints (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'planned',
+    starts_at INTEGER,
+    ends_at INTEGER,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS milestones (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    due_at INTEGER,
+    status TEXT NOT NULL DEFAULT 'open',
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS pull_requests (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'open',
+    branch TEXT NOT NULL DEFAULT '',
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS releases (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    notes TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'draft',
+    created_at INTEGER NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS external_refs (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    entity_kind TEXT NOT NULL,
+    entity_id TEXT NOT NULL,
+    service TEXT NOT NULL,
+    external_id TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS sync_state (
+    key TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    cursor TEXT NOT NULL DEFAULT '',
+    updated_at INTEGER NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_sprints_project ON sprints (project_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_milestones_project ON milestones (project_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_prs_project ON pull_requests (project_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_releases_project ON releases (project_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_refs_entity ON external_refs (entity_kind, entity_id)`,
 ];

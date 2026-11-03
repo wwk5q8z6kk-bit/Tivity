@@ -1,14 +1,17 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import type { Decision, Doc, EntityKind, EvidenceItem, ImpactItem, Link, MemoryEntry, Project, Requirement, RequirementVersion, Task } from './core/types';
+import type { Decision, Doc, EntityKind, EvidenceItem, ExternalRef, ImpactItem, Link, MemoryEntry, Milestone, Project, PullRequest, Release, Requirement, RequirementVersion, Sprint, Task } from './core/types';
 import { createStore, type Store } from './core/store';
 import { findImpacted, shortId, type EntityRef } from './core/links';
 
-type Tab = 'tasks' | 'docs' | 'decisions' | 'memory' | 'links' | 'requirements' | 'evidence';
+type Tab = 'tasks' | 'docs' | 'decisions' | 'memory' | 'links' | 'requirements' | 'evidence' | 'delivery';
 
 const NEXT_STATUS = { todo: 'doing', doing: 'done', done: 'todo' } as const;
+const NEXT_SPRINT = { planned: 'active', active: 'closed', closed: 'planned' } as const;
+const NEXT_PR = { open: 'merged', merged: 'closed', closed: 'open' } as const;
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'requirements', label: 'Requirements' },
   { id: 'tasks', label: 'Tasks' },
+  { id: 'delivery', label: 'Delivery' },
   { id: 'docs', label: 'Docs' },
   { id: 'evidence', label: 'Evidence' },
   { id: 'decisions', label: 'Decisions' },
@@ -34,6 +37,11 @@ export default function App() {
   const [versions, setVersions] = useState<RequirementVersion[]>([]);
   const [evidence, setEvidence] = useState<EvidenceItem[]>([]);
   const [queue, setQueue] = useState<ImpactItem[]>([]);
+  const [sprints, setSprints] = useState<Sprint[]>([]);
+  const [milestones, setMilestones] = useState<Milestone[]>([]);
+  const [prs, setPrs] = useState<PullRequest[]>([]);
+  const [releases, setReleases] = useState<Release[]>([]);
+  const [refs, setRefs] = useState<ExternalRef[]>([]);
 
   function report(e: unknown): void {
     setError(e instanceof Error ? e.message : String(e));
@@ -66,6 +74,11 @@ export default function App() {
     }).catch(report);
     store.listEvidence(activeId).then(setEvidence).catch(report);
     store.listImpact(activeId).then(setQueue).catch(report);
+    store.listSprints(activeId).then(setSprints).catch(report);
+    store.listMilestones(activeId).then(setMilestones).catch(report);
+    store.listPullRequests(activeId).then(setPrs).catch(report);
+    store.listReleases(activeId).then(setReleases).catch(report);
+    store.listExternalRefs(activeId).then(setRefs).catch(report);
     setImpact([]);
   }, [store, activeId]);
 
@@ -80,7 +93,7 @@ export default function App() {
   async function reloadActive(): Promise<void> {
     if (!store || !activeId) return;
     try {
-      const [t, d, dec, m, l, rs, ev, q] = await Promise.all([
+      const [t, d, dec, m, l, rs, ev, q, sp, ms, pr, rel, refs] = await Promise.all([
         store.listTasks(activeId),
         store.listDocs(activeId),
         store.listDecisions(activeId),
@@ -89,6 +102,11 @@ export default function App() {
         store.listRequirements(activeId),
         store.listEvidence(activeId),
         store.listImpact(activeId),
+        store.listSprints(activeId),
+        store.listMilestones(activeId),
+        store.listPullRequests(activeId),
+        store.listReleases(activeId),
+        store.listExternalRefs(activeId),
       ]);
       setTasks(t);
       setDocs(d);
@@ -98,6 +116,11 @@ export default function App() {
       setRequirements(rs);
       setEvidence(ev);
       setQueue(q);
+      setSprints(sp);
+      setMilestones(ms);
+      setPrs(pr);
+      setReleases(rel);
+      setRefs(refs);
       if (activeReqId) setVersions(await store.listRequirementVersions(activeReqId));
     } catch (e) {
       report(e);
@@ -111,6 +134,10 @@ export default function App() {
     if (kind === 'memory') return memory.find((m) => m.id === id)?.content.slice(0, 40) ?? shortId(id);
     if (kind === 'requirement') return requirements.find((r) => r.id === id)?.title ?? shortId(id);
     if (kind === 'evidence') return evidence.find((e) => e.id === id)?.title ?? shortId(id);
+    if (kind === 'sprint') return sprints.find((s) => s.id === id)?.name ?? shortId(id);
+    if (kind === 'milestone') return milestones.find((x) => x.id === id)?.name ?? shortId(id);
+    if (kind === 'pull_request') return prs.find((p) => p.id === id)?.title ?? shortId(id);
+    if (kind === 'release') return releases.find((r) => r.id === id)?.name ?? shortId(id);
     return `${kind}:${shortId(id)}`;
   }
 
@@ -280,6 +307,100 @@ export default function App() {
     }
   }
 
+  async function addSprint(e: FormEvent<HTMLFormElement>): Promise<void> {
+    e.preventDefault();
+    if (!store || !activeId) return;
+    const name = String(new FormData(e.currentTarget).get('name') ?? '').trim();
+    if (!name) return;
+    try {
+      await store.createSprint(activeId, { name });
+      e.currentTarget.reset();
+      await reloadActive();
+    } catch (err) {
+      report(err);
+    }
+  }
+
+  async function advanceSprint(s: Sprint): Promise<void> {
+    if (!store) return;
+    try {
+      await store.setSprintStatus(s.id, NEXT_SPRINT[s.status]);
+      await reloadActive();
+    } catch (err) {
+      report(err);
+    }
+  }
+
+  async function addMilestone(e: FormEvent<HTMLFormElement>): Promise<void> {
+    e.preventDefault();
+    if (!store || !activeId) return;
+    const name = String(new FormData(e.currentTarget).get('name') ?? '').trim();
+    if (!name) return;
+    try {
+      await store.createMilestone(activeId, name);
+      e.currentTarget.reset();
+      await reloadActive();
+    } catch (err) {
+      report(err);
+    }
+  }
+
+  async function addPR(e: FormEvent<HTMLFormElement>): Promise<void> {
+    e.preventDefault();
+    if (!store || !activeId) return;
+    const fd = new FormData(e.currentTarget);
+    const title = String(fd.get('title') ?? '').trim();
+    if (!title) return;
+    try {
+      await store.createPullRequest(activeId, { title, branch: String(fd.get('branch') ?? '') });
+      e.currentTarget.reset();
+      await reloadActive();
+    } catch (err) {
+      report(err);
+    }
+  }
+
+  async function advancePR(p: PullRequest): Promise<void> {
+    if (!store) return;
+    try {
+      await store.setPullRequestStatus(p.id, NEXT_PR[p.status]);
+      await reloadActive();
+    } catch (err) {
+      report(err);
+    }
+  }
+
+  async function addRelease(e: FormEvent<HTMLFormElement>): Promise<void> {
+    e.preventDefault();
+    if (!store || !activeId) return;
+    const fd = new FormData(e.currentTarget);
+    const name = String(fd.get('name') ?? '').trim();
+    if (!name) return;
+    try {
+      await store.createRelease(activeId, { name, notes: String(fd.get('notes') ?? '') });
+      e.currentTarget.reset();
+      await reloadActive();
+    } catch (err) {
+      report(err);
+    }
+  }
+
+  async function addRef(e: FormEvent<HTMLFormElement>): Promise<void> {
+    e.preventDefault();
+    if (!store || !activeId) return;
+    const fd = new FormData(e.currentTarget);
+    const [kind, id] = String(fd.get('entity') ?? '').split(':');
+    const service = String(fd.get('service') ?? '').trim() || 'github';
+    const externalId = String(fd.get('externalId') ?? '').trim();
+    if (!kind || !id || !externalId) return;
+    try {
+      await store.addExternalRef(activeId, { entityKind: kind as EntityKind, entityId: id, service, externalId });
+      await reloadActive();
+    } catch (err) {
+      report(err);
+    }
+  }
+
   const active = projects.find((p) => p.id === activeId);
   const activeReq = requirements.find((r) => r.id === activeReqId);
   const entityOptions = (
@@ -298,6 +419,18 @@ export default function App() {
       </optgroup>
       <optgroup label="Evidence">
         {evidence.map((e) => <option key={e.id} value={`evidence:${e.id}`}>{e.title}</option>)}
+      </optgroup>
+      <optgroup label="Sprints">
+        {sprints.map((s) => <option key={s.id} value={`sprint:${s.id}`}>{s.name}</option>)}
+      </optgroup>
+      <optgroup label="Milestones">
+        {milestones.map((x) => <option key={x.id} value={`milestone:${x.id}`}>{x.name}</option>)}
+      </optgroup>
+      <optgroup label="Pull requests">
+        {prs.map((p) => <option key={p.id} value={`pull_request:${p.id}`}>{p.title}</option>)}
+      </optgroup>
+      <optgroup label="Releases">
+        {releases.map((r) => <option key={r.id} value={`release:${r.id}`}>{r.name}</option>)}
       </optgroup>
     </>
   );
@@ -388,6 +521,75 @@ export default function App() {
               </div>
             ))}
             {evidence.length === 0 ? <p className="muted">No evidence yet.</p> : null}
+          </>
+        )}
+
+        {tab === 'delivery' && (
+          <>
+            <h3>Sprints</h3>
+            <form className="row" onSubmit={addSprint}>
+              <input type="text" name="name" placeholder="New sprint" />
+              <button className="go" type="submit">Add</button>
+            </form>
+            <ul className="clean">
+              {sprints.map((s) => (
+                <li key={s.id}>
+                  <span className={`pill ${s.status === 'active' ? 'doing' : s.status === 'closed' ? 'done' : ''}`}>{s.status}</span>{' '}
+                  {s.name}{' '}
+                  <button className="ghost" onClick={() => advanceSprint(s)}>advance</button>
+                </li>
+              ))}
+            </ul>
+            <h3>Milestones</h3>
+            <form className="row" onSubmit={addMilestone}>
+              <input type="text" name="name" placeholder="New milestone" />
+              <button className="go" type="submit">Add</button>
+            </form>
+            <ul className="clean">
+              {milestones.map((x) => (
+                <li key={x.id}><span className="pill">{x.status}</span> {x.name}</li>
+              ))}
+            </ul>
+            <h3>Pull requests</h3>
+            <form className="row" onSubmit={addPR}>
+              <input type="text" name="title" placeholder="PR title" />
+              <input type="text" name="branch" placeholder="branch" style={{ maxWidth: 160 }} />
+              <button className="go" type="submit">Add</button>
+            </form>
+            <ul className="clean">
+              {prs.map((p) => (
+                <li key={p.id}>
+                  <span className={`pill ${p.status === 'merged' ? 'done' : p.status === 'open' ? 'doing' : ''}`}>{p.status}</span>{' '}
+                  {p.title}{p.branch ? <span className="muted"> ({p.branch})</span> : null}{' '}
+                  <button className="ghost" onClick={() => advancePR(p)}>advance</button>
+                </li>
+              ))}
+            </ul>
+            <h3>Releases</h3>
+            <form className="row" onSubmit={addRelease}>
+              <input type="text" name="name" placeholder="Release name" />
+              <input type="text" name="notes" placeholder="notes" />
+              <button className="go" type="submit">Add</button>
+            </form>
+            <ul className="clean">
+              {releases.map((r) => (
+                <li key={r.id}><span className="pill">{r.status}</span> {r.name}{r.notes ? <span className="muted"> — {r.notes}</span> : null}</li>
+              ))}
+            </ul>
+            <h3>External refs</h3>
+            <form className="card" onSubmit={addRef}>
+              <div className="row">
+                <select name="entity">{entityOptions}</select>
+                <input type="text" name="service" placeholder="service" defaultValue="github" style={{ maxWidth: 110 }} />
+                <input type="text" name="externalId" placeholder="owner/repo#123" />
+                <button className="go" type="submit">Attach</button>
+              </div>
+            </form>
+            <ul className="clean">
+              {refs.map((r) => (
+                <li key={r.id}>{r.entityKind}: {titleOf(r.entityKind, r.entityId)} <span className="pill">{r.service}</span> {r.externalId}</li>
+              ))}
+            </ul>
           </>
         )}
 
