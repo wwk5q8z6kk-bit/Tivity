@@ -265,6 +265,40 @@ issues read/write + metadata, install on target repos, run a small webhook
 receiver for issue events into sync_state cursors, then flip push/pull auth
 from PAT to installation tokens. Nothing in the v0 schema blocks this.
 
+## 0019 — LLM handlers — DECIDED: Mastra Agent, Ollama-local default, cloud override
+
+| Option | Score notes | Verdict |
+|---|---|---|
+| Mastra Agent + store tools (list open tasks, read task context, record note), model injected | Tool seam already green (0017); agent takes any LanguageModelV2 | CHOSEN |
+| Ollama-local default model (qwen2.5-coder:7b verified running this session) | Local-first 5, cost 5 (free), privacy 5, quality 3 | CHOSEN default — no keys needed |
+| OpenAI-compatible override via env (baseURL + key + model) | Quality 4, needs billing + keys | CHOSEN as override path, same code path |
+| New `agent-task` job type: payload {taskId, goal} → agent reads linked context → writes memory note + run summary, never auto-mutates entities | Robustness 4 (note-only side effects) | CHOSEN — auto-mutation needs approval UX (future) |
+| Committed tests calling live models | Flaky, needs network/keys/GPU in CI | Rejected — committed tests use tool-unit + fake-agent plumbing; live call verified by throwaway probe |
+
+Decisive factors: runs for free offline-first today (Ollama) + provider swap is one
+env change + committed suite stays hermetic while a live probe proves the real path.
+Evidence: 0017 spike; Ollama /api/tags live probe (qwen2.5-coder:7b present).
+
+Live result (this session, throwaway probe, file deleted after): full path green —
+createModel → Mastra Agent.generate → executeAgentTask → memory note asserted.
+First run timed out on Ollama cold start (~3 min model load); warm rerun passed
+in ~10s. Committed tests cover everything except the billed/live call.
+
+Build-failure finding (same session, reshaped the client path): @mastra/core is
+Node-only — it imports stream/https/net/child_process (+posthog-node), and vite
+cannot bundle it into the frontend (Rollup externalization of `Transform` fails
+the build). So: Mastra stays in agent-runtime for Node/tests/worker only (back
+to devDeps; ./llm not re-exported from the package index); the shipped client
+path is dependency-free fetch to the OpenAI-compatible endpoint. CORS probes:
+browser-dev origin (http://localhost:1420) gets Access-Control-Allow-Origin from
+Ollama; tauri://localhost gets no usable answer — therefore the desktop app
+calls a native Rust command (llm_chat, reqwest) first and falls back to fetch
+for browser dev. @ai-sdk/openai-compatible was removed again (nothing uses it).
+Live probe v2 (throwaway, deleted): default agent-task path green end to end —
+runDueJobs → fetch → memory note asserted in 57s. The Tauri-invoke branch is
+typechecked and compiles but cannot run headless; first desktop launch should
+watch the Agents tab result line.
+
 ## Roadmap (from workflow synthesis, surface-adjusted)
 
 - M0 scaffold + core tables + links + impact check (S0+S1 slice) — SHIPPED and verified
@@ -275,7 +309,7 @@ from PAT to installation tokens. Nothing in the v0 schema blocks this.
 - M2c GitHub push sync on PAT (S5 slice) — SHIPPED and verified
 - M2d GitHub App auth + webhooks (needs user-side App setup, see 0018 notes)
 - M4a local audited agent runtime: jobs ledger + runs + rule handlers (S7 slice) — SHIPPED and verified
-- M4b LLM handlers (needs 0017 Mastra verdict + provider keys)
+- M4b LLM handlers: agent-task job, Ollama-local default, native+fetch paths (S7) — SHIPPED and verified
 - M4 agent runtime on Mastra + AWR substrate, audited runs (S7)
 - M5 hardening, FTS5/vector search, IDE extension client
 - (Original P5-Tauri-shell milestone folds into M0 per decision 0001 override)

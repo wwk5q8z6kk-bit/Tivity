@@ -1,4 +1,5 @@
 import type { Job, Store } from '@tivity/core';
+import { agentTask } from './llm-handler';
 import type { JobHandler } from './runner';
 
 // Local rule handlers: deterministic, offline, no model calls. They prove the
@@ -32,4 +33,5 @@ async function impactNudge(store: Store, projectId: string, _job: Job): Promise<
 export const localHandlers: Record<string, JobHandler> = {
   housekeeping,
   'impact-nudge': impactNudge,
+  'agent-task': agentTask,
 };

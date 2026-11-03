@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import type { Agent, AgentRun, Decision, DesignComponent, Doc, EntityKind, EvidenceItem, ExternalRef, ImpactItem, Job, Link, MemoryEntry, Milestone, MonitorCheck, Project, PullRequest, QualityGate, Release, Requirement, RequirementVersion, Screen, SecurityFinding, Sprint, Task, TestCase, TestRun } from '@tivity/core';
 import type { Store } from '@tivity/core';
 import { createStore } from './store-setup';
+import { desktopAgentTask } from './agent-task';
 import { findImpacted, shortId, type EntityRef } from '@tivity/core';
 
 type Tab = 'tasks' | 'docs' | 'decisions' | 'memory' | 'links' | 'requirements' | 'evidence' | 'delivery' | 'design' | 'quality' | 'sync' | 'agents';
@@ -664,6 +665,33 @@ export default function App() {
     }
   }
 
+  async function askAgent(e: FormEvent<HTMLFormElement>): Promise<void> {
+    e.preventDefault();
+    if (!store || !activeId || running) return;
+    const fd = new FormData(e.currentTarget);
+    const taskId = String(fd.get('task') ?? '');
+    const goal = String(fd.get('goal') ?? '').trim();
+    if (!taskId) {
+      setRunResult('Pick a task first.');
+      return;
+    }
+    setRunning(true);
+    setRunResult('Agent thinking… (local model; a cold first run loads for minutes)');
+    try {
+      let agent = agents.find((a) => a.status === 'active');
+      if (!agent) agent = await store.registerAgent(activeId, { name: 'Housekeeper', role: 'local maintenance', model: 'local-handlers' });
+      await store.enqueueJob(activeId, { type: 'agent-task', payload: JSON.stringify({ taskId, goal }) });
+      const { runDueJobs, localHandlers } = await import('@tivity/agent-runtime');
+      const out = await runDueJobs(store, activeId, agent.id, { ...localHandlers, 'agent-task': desktopAgentTask });
+      setRunResult(`Agent run finished: ${out.ran} ran, ${out.failed} failed. See Memory for the answer.`);
+      await reloadActive();
+    } catch (err) {
+      setRunResult(`Agent run failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setRunning(false);
+    }
+  }
+
   async function runHousekeeping(): Promise<void> {
     if (!store || !activeId || running) return;
     setRunning(true);
@@ -674,7 +702,7 @@ export default function App() {
       await store.enqueueJob(activeId, { type: 'housekeeping' });
       await store.enqueueJob(activeId, { type: 'impact-nudge' });
       const { runDueJobs, localHandlers } = await import('@tivity/agent-runtime');
-      const out = await runDueJobs(store, activeId, agent.id, localHandlers);
+      const out = await runDueJobs(store, activeId, agent.id, { ...localHandlers, 'agent-task': desktopAgentTask });
       setRunResult(`Ran ${out.ran}, failed ${out.failed}.`);
       await reloadActive();
     } catch (err) {
@@ -1028,7 +1056,7 @@ export default function App() {
 
         {tab === 'agents' && (
           <>
-            <p className="muted">Local rule handlers prove the ledger and audit trail; LLM handlers arrive in M4b. Every run is recorded below.</p>
+            <p className="muted">Rule handlers plus one LLM job (agent-task: reads linked context, writes a memory note, never auto-mutates). Every run is recorded below.</p>
             <h3>Agents</h3>
             <form className="row" onSubmit={addAgent}>
               <input type="text" name="name" placeholder="Agent name" />
@@ -1050,6 +1078,14 @@ export default function App() {
               <button className="go" onClick={runHousekeeping} disabled={running}>Run housekeeping now</button>
               {runResult ? <span className="muted">{runResult}</span> : null}
             </div>
+            <form className="row" onSubmit={askAgent} style={{ marginTop: 8 }}>
+              <select name="task">
+                {tasks.map((t) => <option key={t.id} value={t.id}>{t.title}</option>)}
+              </select>
+              <input type="text" name="goal" placeholder="goal (optional)" />
+              <button className="ghost" type="submit" disabled={running || tasks.length === 0}>Ask agent</button>
+            </form>
+            <p className="muted">Model: Ollama-local default (qwen2.5-coder:7b). Override with TIVITY_MODEL_PROVIDER=openai, TIVITY_MODEL_NAME, TIVITY_MODEL_BASE_URL, TIVITY_MODEL_API_KEY.</p>
             <ul className="clean">
               {jobs.slice(0, 10).map((j) => (
                 <li key={j.id}><span className="pill">{j.status}</span> {j.type}<span className="muted"> · attempts {j.attempts}</span>{j.result ? <span className="muted"> — {j.result.slice(0, 80)}</span> : null}</li>

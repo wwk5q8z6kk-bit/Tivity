@@ -37,7 +37,7 @@ Decisions with scored options: [docs/decisions/README.md](docs/decisions/README.
 - `apps/desktop` — React UI + Tauri shell + store wiring (`pnpm dev`, `pnpm tauri:dev`)
 - `packages/core` — domain model, SQLite schema, links, store backends (dependency-free)
 - `packages/github-sync` — Octokit issue pull into linked tasks (pull-only v0)
-- `packages/agent-runtime` — lease-claim job runner with audited runs and local rule handlers (housekeeping, impact-nudge); Mastra tool seam verified for M4b
+- `packages/agent-runtime` — lease-claim job runner with audited runs, local rule handlers (housekeeping, impact-nudge), and the `agent-task` LLM job (Ollama-local default, OpenAI-compatible override); Mastra Agent/tools verified for the Node/worker path
 
 Root commands fan out: `pnpm typecheck` (all packages), `pnpm test` (core + sync suites).
 
