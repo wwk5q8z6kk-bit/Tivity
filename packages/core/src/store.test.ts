@@ -140,19 +140,19 @@ describe('agents + runs + jobs ledger', () => {
   it('enqueues, claims, completes and requeues jobs', async () => {
     const store = new BrowserStore();
     const p = await store.createProject({ name: 'J2' });
-    const t0 = Date.now();
     const job = await store.enqueueJob(p.id, { type: 'housekeeping', payload: '{"a":1}' });
     expect(job.status).toBe('queued');
-    const claimed = await store.claimDueJob(p.id, t0);
+    const claimed = await store.claimDueJob(p.id, Date.now());
     expect(claimed?.id).toBe(job.id);
     expect(claimed?.attempts).toBe(1);
     await store.completeJob(job.id, 'done', 'ok');
     expect((await store.listJobs(p.id))[0].status).toBe('done');
     const retry = await store.enqueueJob(p.id, { type: 'flaky' });
-    await store.claimDueJob(p.id, t0);
-    await store.requeueJob(retry.id, t0 + 5_000);
-    expect(await store.claimDueJob(p.id, t0 + 1_000)).toBeNull();
-    const again = await store.claimDueJob(p.id, t0 + 6_000);
+    await store.claimDueJob(p.id, Date.now());
+    const t1 = Date.now();
+    await store.requeueJob(retry.id, t1 + 5_000);
+    expect(await store.claimDueJob(p.id, t1 + 1_000)).toBeNull();
+    const again = await store.claimDueJob(p.id, t1 + 6_000);
     expect(again?.id).toBe(retry.id);
     expect(again?.attempts).toBe(2);
   });
