@@ -220,4 +220,40 @@ export const MIGRATIONS: string[] = [
   `CREATE INDEX IF NOT EXISTS idx_gates_project ON quality_gates (project_id)`,
   `CREATE INDEX IF NOT EXISTS idx_findings_project ON security_findings (project_id)`,
   `CREATE INDEX IF NOT EXISTS idx_checks_project ON monitor_checks (project_id)`,
+  `CREATE TABLE IF NOT EXISTS agents (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT '',
+    model TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'active',
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS agent_runs (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    agent_id TEXT NOT NULL,
+    job_id TEXT,
+    status TEXT NOT NULL DEFAULT 'running',
+    summary TEXT NOT NULL DEFAULT '',
+    started_at INTEGER NOT NULL,
+    finished_at INTEGER
+  )`,
+  `CREATE TABLE IF NOT EXISTS jobs (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    type TEXT NOT NULL,
+    payload TEXT NOT NULL DEFAULT '{}',
+    status TEXT NOT NULL DEFAULT 'queued',
+    attempts INTEGER NOT NULL DEFAULT 0,
+    run_after INTEGER NOT NULL,
+    lease_until INTEGER,
+    result TEXT NOT NULL DEFAULT '',
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_agents_project ON agents (project_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_runs_project ON agent_runs (project_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_jobs_claim ON jobs (project_id, status, run_after)`,
 ];

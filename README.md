@@ -2,7 +2,7 @@
 
 One workspace. One source of truth. Every project. Every stage. Every agent.
 
-Status: M0–M3 + M2b shipped and verified (monorepo + GitHub pull sync). Build target is a launchable app —
+Status: M0–M4a shipped and verified (local audited agent runtime; Mastra tool seam green). Build target is a launchable app —
 task owner chose "whatever is best, most efficient, robust, and AI-native."
 
 Decisions so far:
@@ -37,6 +37,7 @@ Decisions with scored options: [docs/decisions/README.md](docs/decisions/README.
 - `apps/desktop` — React UI + Tauri shell + store wiring (`pnpm dev`, `pnpm tauri:dev`)
 - `packages/core` — domain model, SQLite schema, links, store backends (dependency-free)
 - `packages/github-sync` — Octokit issue pull into linked tasks (pull-only v0)
+- `packages/agent-runtime` — lease-claim job runner with audited runs and local rule handlers (housekeeping, impact-nudge); Mastra tool seam verified for M4b
 
 Root commands fan out: `pnpm typecheck` (all packages), `pnpm test` (core + sync suites).
 

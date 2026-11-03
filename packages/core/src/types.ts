@@ -239,3 +239,39 @@ export interface MonitorCheck {
   checkedAt: number | null;
   createdAt: number;
 }
+
+export interface Agent {
+  id: string;
+  projectId: string;
+  name: string;
+  role: string;
+  model: string;
+  status: 'active' | 'paused';
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface AgentRun {
+  id: string;
+  projectId: string;
+  agentId: string;
+  jobId: string | null;
+  status: 'running' | 'done' | 'failed';
+  summary: string;
+  startedAt: number;
+  finishedAt: number | null;
+}
+
+export interface Job {
+  id: string;
+  projectId: string;
+  type: string;
+  payload: string;
+  status: 'queued' | 'running' | 'done' | 'failed';
+  attempts: number;
+  runAfter: number;
+  leaseUntil: number | null;
+  result: string;
+  createdAt: number;
+  updatedAt: number;
+}

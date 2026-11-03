@@ -1,10 +1,10 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import type { Decision, DesignComponent, Doc, EntityKind, EvidenceItem, ExternalRef, ImpactItem, Link, MemoryEntry, Milestone, MonitorCheck, Project, PullRequest, QualityGate, Release, Requirement, RequirementVersion, Screen, SecurityFinding, Sprint, Task, TestCase, TestRun } from '@tivity/core';
+import type { Agent, AgentRun, Decision, DesignComponent, Doc, EntityKind, EvidenceItem, ExternalRef, ImpactItem, Job, Link, MemoryEntry, Milestone, MonitorCheck, Project, PullRequest, QualityGate, Release, Requirement, RequirementVersion, Screen, SecurityFinding, Sprint, Task, TestCase, TestRun } from '@tivity/core';
 import type { Store } from '@tivity/core';
 import { createStore } from './store-setup';
 import { findImpacted, shortId, type EntityRef } from '@tivity/core';
 
-type Tab = 'tasks' | 'docs' | 'decisions' | 'memory' | 'links' | 'requirements' | 'evidence' | 'delivery' | 'design' | 'quality' | 'sync';
+type Tab = 'tasks' | 'docs' | 'decisions' | 'memory' | 'links' | 'requirements' | 'evidence' | 'delivery' | 'design' | 'quality' | 'sync' | 'agents';
 
 const NEXT_STATUS = { todo: 'doing', doing: 'done', done: 'todo' } as const;
 const NEXT_SPRINT = { planned: 'active', active: 'closed', closed: 'planned' } as const;
@@ -16,6 +16,7 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'tasks', label: 'Tasks' },
   { id: 'delivery', label: 'Delivery' },
   { id: 'sync', label: 'Sync' },
+  { id: 'agents', label: 'Agents' },
   { id: 'docs', label: 'Docs' },
   { id: 'evidence', label: 'Evidence' },
   { id: 'design', label: 'Design' },
@@ -58,6 +59,11 @@ export default function App() {
   const [checks, setChecks] = useState<MonitorCheck[]>([]);
   const [syncResult, setSyncResult] = useState('');
   const [syncing, setSyncing] = useState(false);
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [runs, setRuns] = useState<AgentRun[]>([]);
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [runResult, setRunResult] = useState('');
+  const [running, setRunning] = useState(false);
 
   function report(e: unknown): void {
     setError(e instanceof Error ? e.message : String(e));
@@ -104,6 +110,9 @@ export default function App() {
     store.listQualityGates(activeId).then(setGates).catch(report);
     store.listSecurityFindings(activeId).then(setFindings).catch(report);
     store.listMonitorChecks(activeId).then(setChecks).catch(report);
+    store.listAgents(activeId).then(setAgents).catch(report);
+    store.listAgentRuns(activeId).then(setRuns).catch(report);
+    store.listJobs(activeId).then(setJobs).catch(report);
     setImpact([]);
   }, [store, activeId]);
 
@@ -126,7 +135,7 @@ export default function App() {
   async function reloadActive(): Promise<void> {
     if (!store || !activeId) return;
     try {
-      const [t, d, dec, m, l, rs, ev, q, sp, ms, pr, rel, refs, scr, cmp, tc, gt, sf, mc] = await Promise.all([
+      const [t, d, dec, m, l, rs, ev, q, sp, ms, pr, rel, refs, scr, cmp, tc, gt, sf, mc, ag, rn, jb] = await Promise.all([
         store.listTasks(activeId),
         store.listDocs(activeId),
         store.listDecisions(activeId),
@@ -146,6 +155,9 @@ export default function App() {
         store.listQualityGates(activeId),
         store.listSecurityFindings(activeId),
         store.listMonitorChecks(activeId),
+        store.listAgents(activeId),
+        store.listAgentRuns(activeId),
+        store.listJobs(activeId),
       ]);
       setTasks(t);
       setDocs(d);
@@ -166,6 +178,9 @@ export default function App() {
       setGates(gt);
       setFindings(sf);
       setChecks(mc);
+      setAgents(ag);
+      setRuns(rn);
+      setJobs(jb);
       if (activeReqId) setVersions(await store.listRequirementVersions(activeReqId));
       if (activeCaseId) setTestRuns(await store.listTestRuns(activeCaseId));
     } catch (e) {
@@ -617,6 +632,51 @@ export default function App() {
     }
   }
 
+  async function addAgent(e: FormEvent<HTMLFormElement>): Promise<void> {
+    e.preventDefault();
+    if (!store || !activeId) return;
+    const fd = new FormData(e.currentTarget);
+    const name = String(fd.get('name') ?? '').trim();
+    if (!name) return;
+    try {
+      await store.registerAgent(activeId, { name, role: String(fd.get('role') ?? '') });
+      e.currentTarget.reset();
+      await reloadActive();
+    } catch (err) {
+      report(err);
+    }
+  }
+
+  async function toggleAgent(a: Agent): Promise<void> {
+    if (!store) return;
+    try {
+      await store.setAgentStatus(a.id, a.status === 'active' ? 'paused' : 'active');
+      await reloadActive();
+    } catch (err) {
+      report(err);
+    }
+  }
+
+  async function runHousekeeping(): Promise<void> {
+    if (!store || !activeId || running) return;
+    setRunning(true);
+    setRunResult('Running…');
+    try {
+      let agent = agents.find((a) => a.status === 'active');
+      if (!agent) agent = await store.registerAgent(activeId, { name: 'Housekeeper', role: 'local maintenance', model: 'local-handlers' });
+      await store.enqueueJob(activeId, { type: 'housekeeping' });
+      await store.enqueueJob(activeId, { type: 'impact-nudge' });
+      const { runDueJobs, localHandlers } = await import('@tivity/agent-runtime');
+      const out = await runDueJobs(store, activeId, agent.id, localHandlers);
+      setRunResult(`Ran ${out.ran}, failed ${out.failed}.`);
+      await reloadActive();
+    } catch (err) {
+      setRunResult(`Run failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setRunning(false);
+    }
+  }
+
   const active = projects.find((p) => p.id === activeId);
   const activeReq = requirements.find((r) => r.id === activeReqId);
   const activeCase = testCases.find((c) => c.id === activeCaseId);
@@ -955,6 +1015,45 @@ export default function App() {
               </div>
             </form>
             {syncResult ? <p>{syncResult}</p> : null}
+          </>
+        )}
+
+        {tab === 'agents' && (
+          <>
+            <p className="muted">Local rule handlers prove the ledger and audit trail; LLM handlers arrive in M4b. Every run is recorded below.</p>
+            <h3>Agents</h3>
+            <form className="row" onSubmit={addAgent}>
+              <input type="text" name="name" placeholder="Agent name" />
+              <input type="text" name="role" placeholder="role" style={{ maxWidth: 160 }} />
+              <button className="go" type="submit">Register</button>
+            </form>
+            <ul className="clean">
+              {agents.map((a) => (
+                <li key={a.id}>
+                  <span className="pill">{a.status}</span> {a.name}
+                  {a.role ? <span className="muted"> — {a.role}</span> : null}
+                  {a.model ? <span className="muted"> ({a.model})</span> : null}{' '}
+                  <button className="ghost" onClick={() => toggleAgent(a)}>{a.status === 'active' ? 'pause' : 'resume'}</button>
+                </li>
+              ))}
+            </ul>
+            <h3>Jobs</h3>
+            <div className="row">
+              <button className="go" onClick={runHousekeeping} disabled={running}>Run housekeeping now</button>
+              {runResult ? <span className="muted">{runResult}</span> : null}
+            </div>
+            <ul className="clean">
+              {jobs.slice(0, 10).map((j) => (
+                <li key={j.id}><span className="pill">{j.status}</span> {j.type}<span className="muted"> · attempts {j.attempts}</span>{j.result ? <span className="muted"> — {j.result.slice(0, 80)}</span> : null}</li>
+              ))}
+            </ul>
+            <h3>Runs</h3>
+            <ul className="clean">
+              {runs.slice(0, 15).map((r) => (
+                <li key={r.id}><span className={`pill ${r.status === 'done' ? 'done' : ''}`}>{r.status}</span> {agents.find((a) => a.id === r.agentId)?.name ?? shortId(r.agentId)}<span className="muted"> — {r.summary || 'running…'}</span></li>
+              ))}
+            </ul>
+            {runs.length === 0 ? <p className="muted">No runs yet.</p> : null}
           </>
         )}
 

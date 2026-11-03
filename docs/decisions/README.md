@@ -209,6 +209,42 @@ Decisive factors: honesty (labeled limits, no fake push) + testability (injected
 client) + the recorded 0007 provisional path (single-user PAT).
 Evidence: workflow result 5 (Octokit inspection), decision 0007.
 
+## 0016 — Agent runtime shape — DECIDED: SQLite jobs ledger + audited runs + local handlers
+
+| Option | Score notes | Verdict |
+|---|---|---|
+| SQLite jobs ledger (claim/complete/requeue) + agent_runs audit + local rule handlers, new packages/agent-runtime | License 5, TS-fit 5, local-first 5, effort 4, robustness 4 (fake-store tested) | CHOSEN for M4a |
+| Vendor AWR LeaseScheduler as-is | Concept 5; implementation needs Postgres (RunsRepository takes pg PoolClient, pool defaults to DATABASE_URL — inspected this session) — no PG server inside the desktop-local path | Rejected as code; ADOPT the pattern (lease claim + attempts + retry-after backoff) |
+| BullMQ/Temporal/Inngest now | Needs Redis/server/cluster (workflow result 5) | Rejected for local-first v0 |
+| LLM-driven handlers now | Needs provider + keys + Mastra verdict (0017) | Deferred to M4b |
+
+Decisive factors: runs offline with zero new infrastructure + every run is audited
+(agent, job, task refs, status, summary) + the runner takes an injected Store so
+the same code drives Tauri SQLite and tests.
+Dissent: rule handlers are not "AI agents" yet — accepted and labeled; they prove
+the ledger, audit trail, and retry semantics that LLM handlers will reuse.
+Evidence: AWR src/scheduler/leaseScheduler.ts + repositories/runsRepository.ts
++ db/pool.ts (inspected); workflow result 5 (queue tradeoffs).
+
+## 0017 — Mastra verdict — KEEP for the M4b tool seam (spike green)
+
+Spike (this session, real install @mastra/core 1.81.0 + zod 4.6.7):
+install 13.7s / +145 packages; Vitest ESM interop clean, no blowup;
+createTool wraps the Tivity Store with zod input/output schemas; direct
+execute passes. Contract learned: execute(inputData, ctx) with schema
+validation (passing {context} as input fails validation — first spike run
+caught it). Standing proof: packages/agent-runtime/src/mastra.test.ts.
+
+| Option | Score notes | Verdict |
+|---|---|---|
+| Mastra tools as the M4b LLM seam | Spike green on every falsifiable claim | KEEP — provisional 0004 upgraded to confirmed for tools |
+| Hand-rolled agent loop instead | The interop risk that motivated it did not materialize | Rejected |
+| Promote @mastra/core to dependencies now | No production import yet; runner/handlers are dependency-free | Rejected — stays devDeps until M4b handlers import it |
+
+Dissent/caveat: Agent-loop-with-model and provider billing are still unverified
+(no keys in session) — M4b needs provider choice + keys before LLM handlers ship.
+Evidence: mastra.test.ts (passing) + installed tool.d.ts contract.
+
 ## Roadmap (from workflow synthesis, surface-adjusted)
 
 - M0 scaffold + core tables + links + impact check (S0+S1 slice) — SHIPPED and verified
@@ -217,6 +253,8 @@ Evidence: workflow result 5 (Octokit inspection), decision 0007.
 - M3 design registry + quality/security/monitoring (S4+S9) — SHIPPED and verified
 - M2b monorepo split + GitHub pull sync, single-user PAT (S5+S6 slice) — SHIPPED and verified
 - M2c GitHub push sync + App auth (needs owner auth decision, 0007)
+- M4a local audited agent runtime: jobs ledger + runs + rule handlers (S7 slice) — SHIPPED and verified
+- M4b LLM handlers (needs 0017 Mastra verdict + provider keys)
 - M4 agent runtime on Mastra + AWR substrate, audited runs (S7)
 - M5 hardening, FTS5/vector search, IDE extension client
 - (Original P5-Tauri-shell milestone folds into M0 per decision 0001 override)

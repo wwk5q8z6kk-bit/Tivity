@@ -1,4 +1,4 @@
-import type { Decision, DesignComponent, Doc, EvidenceItem, ExternalRef, ImpactItem, Link, MemoryEntry, Milestone, MonitorCheck, Project, PullRequest, QualityGate, Release, Requirement, RequirementVersion, Screen, SecurityFinding, Sprint, SyncState, Task, TestCase, TestRun } from './types';
+import type { Agent, AgentRun, Decision, DesignComponent, Doc, EvidenceItem, ExternalRef, ImpactItem, Job, Link, MemoryEntry, Milestone, MonitorCheck, Project, PullRequest, QualityGate, Release, Requirement, RequirementVersion, Screen, SecurityFinding, Sprint, SyncState, Task, TestCase, TestRun } from './types';
 import { MIGRATIONS } from './schema';
 import { findImpacted } from './links';
 
@@ -64,6 +64,17 @@ export interface Store {
   listMonitorChecks(projectId: string): Promise<MonitorCheck[]>;
   createMonitorCheck(projectId: string, name: string): Promise<MonitorCheck>;
   setMonitorCheckStatus(id: string, status: MonitorCheck['status'], detail?: string): Promise<void>;
+  listAgents(projectId: string): Promise<Agent[]>;
+  registerAgent(projectId: string, input: { name: string; role?: string; model?: string }): Promise<Agent>;
+  setAgentStatus(id: string, status: Agent['status']): Promise<void>;
+  listAgentRuns(projectId: string): Promise<AgentRun[]>;
+  startAgentRun(projectId: string, input: { agentId: string; jobId?: string; summary?: string }): Promise<AgentRun>;
+  finishAgentRun(id: string, input: { status: 'done' | 'failed'; summary: string }): Promise<void>;
+  listJobs(projectId: string): Promise<Job[]>;
+  enqueueJob(projectId: string, input: { type: string; payload?: string }): Promise<Job>;
+  claimDueJob(projectId: string, nowMs: number): Promise<Job | null>;
+  completeJob(id: string, status: 'done' | 'failed', result: string): Promise<void>;
+  requeueJob(id: string, runAfter: number): Promise<void>;
 }
 
 export interface SqlDb {
@@ -109,6 +120,9 @@ interface TestRunRow { id: string; test_case_id: string; status: string; note: s
 interface QualityGateRow { id: string; project_id: string; name: string; status: string; created_at: number; updated_at: number }
 interface SecurityFindingRow { id: string; project_id: string; title: string; severity: string; status: string; created_at: number; updated_at: number }
 interface MonitorCheckRow { id: string; project_id: string; name: string; status: string; detail: string; checked_at: number | null; created_at: number }
+interface AgentRow { id: string; project_id: string; name: string; role: string; model: string; status: string; created_at: number; updated_at: number }
+interface AgentRunRow { id: string; project_id: string; agent_id: string; job_id: string | null; status: string; summary: string; started_at: number; finished_at: number | null }
+interface JobRow { id: string; project_id: string; type: string; payload: string; status: string; attempts: number; run_after: number; lease_until: number | null; result: string; created_at: number; updated_at: number }
 
 const toStatus = (s: string): Task['status'] =>
   s === 'doing' || s === 'done' ? s : 'todo';
@@ -606,6 +620,102 @@ export class TauriStore implements Store {
   async setMonitorCheckStatus(id: string, status: MonitorCheck['status'], detail?: string): Promise<void> {
     await this.db.execute('UPDATE monitor_checks SET status = ?, detail = ?, checked_at = ? WHERE id = ?', [status, detail ?? '', now(), id]);
   }
+
+  async listAgents(projectId: string): Promise<Agent[]> {
+    const rows = await this.db.select<AgentRow[]>(
+      'SELECT * FROM agents WHERE project_id = ? ORDER BY created_at ASC', [projectId]);
+    return rows.map((r) => ({
+      id: r.id, projectId: r.project_id, name: r.name, role: r.role, model: r.model,
+      status: r.status === 'paused' ? 'paused' : 'active',
+      createdAt: r.created_at, updatedAt: r.updated_at,
+    }));
+  }
+
+  async registerAgent(projectId: string, input: { name: string; role?: string; model?: string }): Promise<Agent> {
+    const t = now();
+    const a: Agent = { id: uid(), projectId, name: input.name, role: input.role ?? '', model: input.model ?? '', status: 'active', createdAt: t, updatedAt: t };
+    await this.db.execute(
+      'INSERT INTO agents (id, project_id, name, role, model, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [a.id, a.projectId, a.name, a.role, a.model, a.status, a.createdAt, a.updatedAt],
+    );
+    return a;
+  }
+
+  async setAgentStatus(id: string, status: Agent['status']): Promise<void> {
+    await this.db.execute('UPDATE agents SET status = ?, updated_at = ? WHERE id = ?', [status, now(), id]);
+  }
+
+  async listAgentRuns(projectId: string): Promise<AgentRun[]> {
+    const rows = await this.db.select<AgentRunRow[]>(
+      'SELECT * FROM agent_runs WHERE project_id = ? ORDER BY started_at DESC, rowid DESC', [projectId]);
+    return rows.map((r) => ({
+      id: r.id, projectId: r.project_id, agentId: r.agent_id, jobId: r.job_id,
+      status: r.status === 'done' || r.status === 'failed' ? r.status : 'running',
+      summary: r.summary, startedAt: r.started_at, finishedAt: r.finished_at,
+    }));
+  }
+
+  async startAgentRun(projectId: string, input: { agentId: string; jobId?: string; summary?: string }): Promise<AgentRun> {
+    const run: AgentRun = { id: uid(), projectId, agentId: input.agentId, jobId: input.jobId ?? null, status: 'running', summary: input.summary ?? '', startedAt: now(), finishedAt: null };
+    await this.db.execute(
+      'INSERT INTO agent_runs (id, project_id, agent_id, job_id, status, summary, started_at, finished_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [run.id, run.projectId, run.agentId, run.jobId, run.status, run.summary, run.startedAt, run.finishedAt],
+    );
+    return run;
+  }
+
+  async finishAgentRun(id: string, input: { status: 'done' | 'failed'; summary: string }): Promise<void> {
+    await this.db.execute('UPDATE agent_runs SET status = ?, summary = ?, finished_at = ? WHERE id = ?', [input.status, input.summary, now(), id]);
+  }
+
+  async listJobs(projectId: string): Promise<Job[]> {
+    const rows = await this.db.select<JobRow[]>(
+      'SELECT * FROM jobs WHERE project_id = ? ORDER BY created_at DESC, rowid DESC', [projectId]);
+    return rows.map(toJob);
+  }
+
+  async enqueueJob(projectId: string, input: { type: string; payload?: string }): Promise<Job> {
+    const t = now();
+    const job: Job = { id: uid(), projectId, type: input.type, payload: input.payload ?? '{}', status: 'queued', attempts: 0, runAfter: t, leaseUntil: null, result: '', createdAt: t, updatedAt: t };
+    await this.db.execute(
+      'INSERT INTO jobs (id, project_id, type, payload, status, attempts, run_after, lease_until, result, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [job.id, job.projectId, job.type, job.payload, job.status, job.attempts, job.runAfter, job.leaseUntil, job.result, job.createdAt, job.updatedAt],
+    );
+    return job;
+  }
+
+  async claimDueJob(projectId: string, nowMs: number): Promise<Job | null> {
+    const rows = await this.db.select<JobRow[]>(
+      `SELECT * FROM jobs WHERE project_id = ? AND status = 'queued' AND run_after <= ?
+       ORDER BY run_after ASC, rowid ASC LIMIT 1`, [projectId, nowMs]);
+    const row = rows[0];
+    if (!row) return null;
+    await this.db.execute(
+      'UPDATE jobs SET status = ?, attempts = ?, lease_until = ?, updated_at = ? WHERE id = ? AND status = ?',
+      ['running', row.attempts + 1, nowMs + 60_000, now(), row.id, 'queued'],
+    );
+    const check = await this.db.select<JobRow[]>('SELECT * FROM jobs WHERE id = ?', [row.id]);
+    const claimed = check[0];
+    if (!claimed || claimed.status !== 'running') return null;
+    return toJob(claimed);
+  }
+
+  async completeJob(id: string, status: 'done' | 'failed', result: string): Promise<void> {
+    await this.db.execute('UPDATE jobs SET status = ?, result = ?, lease_until = ?, updated_at = ? WHERE id = ?', [status, result, null, now(), id]);
+  }
+
+  async requeueJob(id: string, runAfter: number): Promise<void> {
+    await this.db.execute('UPDATE jobs SET status = ?, run_after = ?, lease_until = ?, updated_at = ? WHERE id = ?', ['queued', runAfter, null, now(), id]);
+  }
+}
+
+function toJob(r: JobRow): Job {
+  return {
+    id: r.id, projectId: r.project_id, type: r.type, payload: r.payload,
+    status: r.status === 'running' || r.status === 'done' || r.status === 'failed' ? r.status : 'queued',
+    attempts: r.attempts, runAfter: r.run_after, leaseUntil: r.lease_until,
+    result: r.result, createdAt: r.created_at, updatedAt: r.updated_at,
+  };
 }
 
 interface Dump {
@@ -632,12 +742,15 @@ interface Dump {
   qualityGates: QualityGate[];
   securityFindings: SecurityFinding[];
   monitorChecks: MonitorCheck[];
+  agents: Agent[];
+  agentRuns: AgentRun[];
+  jobs: Job[];
 }
 
 const FALLBACK_KEY = 'tivity-fallback-v1';
 
 function loadDump(): Dump {
-  const empty: Dump = { projects: [], tasks: [], docs: [], decisions: [], memory: [], links: [], requirements: [], requirementVersions: [], evidence: [], impact: [], sprints: [], milestones: [], pullRequests: [], releases: [], externalRefs: [], syncState: [], screens: [], components: [], testCases: [], testRuns: [], qualityGates: [], securityFindings: [], monitorChecks: [] };
+  const empty: Dump = { projects: [], tasks: [], docs: [], decisions: [], memory: [], links: [], requirements: [], requirementVersions: [], evidence: [], impact: [], sprints: [], milestones: [], pullRequests: [], releases: [], externalRefs: [], syncState: [], screens: [], components: [], testCases: [], testRuns: [], qualityGates: [], securityFindings: [], monitorChecks: [], agents: [], agentRuns: [], jobs: [] };
   try {
     if (typeof localStorage === 'undefined') return empty;
     const raw = localStorage.getItem(FALLBACK_KEY);
@@ -1018,6 +1131,100 @@ export class BrowserStore implements Store {
       this.save();
     }
   }
+
+  async listAgents(projectId: string): Promise<Agent[]> {
+    return this.data.agents.filter((a) => a.projectId === projectId).sort((a, b) => a.createdAt - b.createdAt);
+  }
+
+  async registerAgent(projectId: string, input: { name: string; role?: string; model?: string }): Promise<Agent> {
+    const t = now();
+    const a: Agent = { id: uid(), projectId, name: input.name, role: input.role ?? '', model: input.model ?? '', status: 'active', createdAt: t, updatedAt: t };
+    this.data.agents.push(a);
+    this.save();
+    return a;
+  }
+
+  async setAgentStatus(id: string, status: Agent['status']): Promise<void> {
+    const a = this.data.agents.find((x) => x.id === id);
+    if (a) {
+      a.status = status;
+      a.updatedAt = now();
+      this.save();
+    }
+  }
+
+  async listAgentRuns(projectId: string): Promise<AgentRun[]> {
+    return this.data.agentRuns
+      .filter((r) => r.projectId === projectId)
+      .map((r, i) => ({ r, i }))
+      .sort((a, b) => b.r.startedAt - a.r.startedAt || b.i - a.i)
+      .map(({ r }) => r);
+  }
+
+  async startAgentRun(projectId: string, input: { agentId: string; jobId?: string; summary?: string }): Promise<AgentRun> {
+    const run: AgentRun = { id: uid(), projectId, agentId: input.agentId, jobId: input.jobId ?? null, status: 'running', summary: input.summary ?? '', startedAt: now(), finishedAt: null };
+    this.data.agentRuns.push(run);
+    this.save();
+    return run;
+  }
+
+  async finishAgentRun(id: string, input: { status: 'done' | 'failed'; summary: string }): Promise<void> {
+    const run = this.data.agentRuns.find((x) => x.id === id);
+    if (run) {
+      run.status = input.status;
+      run.summary = input.summary;
+      run.finishedAt = now();
+      this.save();
+    }
+  }
+
+  async listJobs(projectId: string): Promise<Job[]> {
+    return newestFirst(this.data.jobs.filter((j) => j.projectId === projectId));
+  }
+
+  async enqueueJob(projectId: string, input: { type: string; payload?: string }): Promise<Job> {
+    const t = now();
+    const job: Job = { id: uid(), projectId, type: input.type, payload: input.payload ?? '{}', status: 'queued', attempts: 0, runAfter: t, leaseUntil: null, result: '', createdAt: t, updatedAt: t };
+    this.data.jobs.push(job);
+    this.save();
+    return job;
+  }
+
+  async claimDueJob(projectId: string, nowMs: number): Promise<Job | null> {
+    const due = this.data.jobs
+      .filter((j) => j.projectId === projectId && j.status === 'queued' && j.runAfter <= nowMs)
+      .sort((a, b) => a.runAfter - b.runAfter || a.createdAt - b.createdAt);
+    const job = due[0];
+    if (!job) return null;
+    job.status = 'running';
+    job.attempts += 1;
+    job.leaseUntil = nowMs + 60_000;
+    job.updatedAt = now();
+    this.save();
+    return { ...job };
+  }
+
+  async completeJob(id: string, status: 'done' | 'failed', result: string): Promise<void> {
+    const job = this.data.jobs.find((x) => x.id === id);
+    if (job) {
+      job.status = status;
+      job.result = result;
+      job.leaseUntil = null;
+      job.updatedAt = now();
+      this.save();
+    }
+  }
+
+  async requeueJob(id: string, runAfter: number): Promise<void> {
+    const job = this.data.jobs.find((x) => x.id === id);
+    if (job) {
+      job.status = 'queued';
+      job.runAfter = runAfter;
+      job.leaseUntil = null;
+      job.updatedAt = now();
+      this.save();
+    }
+  }
 }
 
 export async function ensureSeeded(store: Store): Promise<void> {
@@ -1041,6 +1248,7 @@ export async function ensureSeeded(store: Store): Promise<void> {
   const screen = await store.createScreen(p.id, { name: 'Home', route: '/' });
   const comp = await store.createComponent(p.id, { name: 'Sidebar', kind: 'layout' });
   await store.addLink(p.id, { fromKind: 'screen', fromId: screen.id, toKind: 'component', toId: comp.id, relation: 'contains' });
+  await store.registerAgent(p.id, { name: 'Housekeeper', role: 'local maintenance', model: 'local-handlers' });
   await store.appendMemory(p.id, 'note', 'Seeded the welcome project.');
   await store.addLink(p.id, { fromKind: 'decision', fromId: d.id, toKind: 'task', toId: t.id, relation: 'drives' });
   await store.addLink(p.id, { fromKind: 'task', fromId: t.id, toKind: 'doc', toId: doc.id, relation: 'documents' });
