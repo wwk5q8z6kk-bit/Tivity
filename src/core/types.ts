@@ -8,7 +8,8 @@ export type EntityKind =
   | 'doc'
   | 'task'
   | 'decision'
-  | 'memory';
+  | 'memory'
+  | 'evidence';
 
 export interface Project {
   id: string;
@@ -63,4 +64,45 @@ export interface Link {
   toId: string;
   relation: string;
   createdAt: number;
+}
+
+export interface Requirement {
+  id: string;
+  projectId: string;
+  title: string;
+  status: string;
+  currentVersion: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface RequirementVersion {
+  id: string;
+  requirementId: string;
+  version: number;
+  body: string;
+  acceptance: string;
+  createdAt: number;
+}
+
+export interface EvidenceItem {
+  id: string;
+  projectId: string;
+  title: string;
+  source: string;
+  detail: string;
+  createdAt: number;
+}
+
+export interface ImpactItem {
+  id: string;
+  projectId: string;
+  triggerKind: EntityKind;
+  triggerId: string;
+  entityKind: EntityKind;
+  entityId: string;
+  reason: string;
+  status: 'pending' | 'accepted' | 'dismissed';
+  createdAt: number;
+  resolvedAt: number | null;
 }

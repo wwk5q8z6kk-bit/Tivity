@@ -1,5 +1,6 @@
-import type { Decision, Doc, Link, MemoryEntry, Project, Task } from './types';
+import type { Decision, Doc, EvidenceItem, ImpactItem, Link, MemoryEntry, Project, Requirement, RequirementVersion, Task } from './types';
 import { MIGRATIONS } from './schema';
+import { findImpacted } from './links';
 
 // One Store interface, two backends: real SQLite inside Tauri and a
 // localStorage fallback so `pnpm dev` works in a plain browser too.
@@ -24,6 +25,14 @@ export interface Store {
     projectId: string,
     input: { fromKind: Link['fromKind']; fromId: string; toKind: Link['toKind']; toId: string; relation: string },
   ): Promise<Link>;
+  listRequirements(projectId: string): Promise<Requirement[]>;
+  createRequirement(projectId: string, input: { title: string; body?: string; acceptance?: string }): Promise<Requirement>;
+  listRequirementVersions(requirementId: string): Promise<RequirementVersion[]>;
+  addRequirementVersion(requirementId: string, input: { body: string; acceptance?: string }): Promise<RequirementVersion>;
+  listEvidence(projectId: string): Promise<EvidenceItem[]>;
+  addEvidence(projectId: string, input: { title: string; source?: string; detail?: string }): Promise<EvidenceItem>;
+  listImpact(projectId: string): Promise<ImpactItem[]>;
+  resolveImpact(id: string, status: 'accepted' | 'dismissed'): Promise<void>;
 }
 
 interface SqlDb {
@@ -43,6 +52,10 @@ interface DocRow { id: string; project_id: string; title: string; body: string; 
 interface DecisionRow { id: string; project_id: string; title: string; context: string; verdict: string; created_at: number }
 interface MemoryRow { id: string; project_id: string; kind: string; content: string; created_at: number }
 interface LinkRow { id: string; project_id: string; from_kind: Link['fromKind']; from_id: string; to_kind: Link['toKind']; to_id: string; relation: string; created_at: number }
+interface RequirementRow { id: string; project_id: string; title: string; status: string; current_version: number; created_at: number; updated_at: number }
+interface RequirementVersionRow { id: string; requirement_id: string; version: number; body: string; acceptance: string; created_at: number }
+interface EvidenceRow { id: string; project_id: string; title: string; source: string; detail: string; created_at: number }
+interface ImpactRow { id: string; project_id: string; trigger_kind: ImpactItem['triggerKind']; trigger_id: string; entity_kind: ImpactItem['entityKind']; entity_id: string; reason: string; status: string; created_at: number; resolved_at: number | null }
 
 const toStatus = (s: string): Task['status'] =>
   s === 'doing' || s === 'done' ? s : 'todo';
@@ -168,6 +181,103 @@ class TauriStore implements Store {
     );
     return l;
   }
+
+  private async note(projectId: string, kind: string, content: string): Promise<void> {
+    await this.db.execute(
+      'INSERT INTO memory_entries (id, project_id, kind, content, created_at) VALUES (?, ?, ?, ?, ?)',
+      [uid(), projectId, kind, content, now()],
+    );
+  }
+
+  async listRequirements(projectId: string): Promise<Requirement[]> {
+    const rows = await this.db.select<RequirementRow[]>(
+      'SELECT * FROM requirements WHERE project_id = ? ORDER BY created_at ASC', [projectId]);
+    return rows.map((r) => ({
+      id: r.id, projectId: r.project_id, title: r.title, status: r.status,
+      currentVersion: r.current_version, createdAt: r.created_at, updatedAt: r.updated_at,
+    }));
+  }
+
+  async createRequirement(projectId: string, input: { title: string; body?: string; acceptance?: string }): Promise<Requirement> {
+    const t = now();
+    const req: Requirement = { id: uid(), projectId, title: input.title, status: 'draft', currentVersion: 1, createdAt: t, updatedAt: t };
+    await this.db.execute(
+      'INSERT INTO requirements (id, project_id, title, status, current_version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [req.id, req.projectId, req.title, req.status, req.currentVersion, req.createdAt, req.updatedAt],
+    );
+    await this.db.execute(
+      'INSERT INTO requirement_versions (id, requirement_id, version, body, acceptance, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      [uid(), req.id, 1, input.body ?? '', input.acceptance ?? '', t],
+    );
+    await this.note(projectId, 'requirement', `Requirement created: ${req.title} (v1).`);
+    return req;
+  }
+
+  async listRequirementVersions(requirementId: string): Promise<RequirementVersion[]> {
+    const rows = await this.db.select<RequirementVersionRow[]>(
+      'SELECT * FROM requirement_versions WHERE requirement_id = ? ORDER BY version ASC', [requirementId]);
+    return rows.map((r) => ({
+      id: r.id, requirementId: r.requirement_id, version: r.version,
+      body: r.body, acceptance: r.acceptance, createdAt: r.created_at,
+    }));
+  }
+
+  async addRequirementVersion(requirementId: string, input: { body: string; acceptance?: string }): Promise<RequirementVersion> {
+    const reqs = await this.db.select<RequirementRow[]>('SELECT * FROM requirements WHERE id = ?', [requirementId]);
+    const req = reqs[0];
+    if (!req) throw new Error(`requirement not found: ${requirementId}`);
+    const version = req.current_version + 1;
+    const v: RequirementVersion = { id: uid(), requirementId, version, body: input.body, acceptance: input.acceptance ?? '', createdAt: now() };
+    await this.db.execute(
+      'INSERT INTO requirement_versions (id, requirement_id, version, body, acceptance, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      [v.id, v.requirementId, v.version, v.body, v.acceptance, v.createdAt],
+    );
+    await this.db.execute('UPDATE requirements SET current_version = ?, updated_at = ? WHERE id = ?', [version, now(), requirementId]);
+    const links = await this.listLinks(req.project_id);
+    const impacted = findImpacted(links, { kind: 'requirement', id: requirementId });
+    for (const target of impacted) {
+      await this.db.execute(
+        'INSERT INTO impact_queue (id, project_id, trigger_kind, trigger_id, entity_kind, entity_id, reason, status, created_at, resolved_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [uid(), req.project_id, 'requirement', requirementId, target.kind, target.id, `requirement "${req.title}" v${version}`, 'pending', now(), null],
+      );
+    }
+    await this.note(req.project_id, 'requirement', `Requirement updated: ${req.title} (v${version}); ${impacted.length} linked ${impacted.length === 1 ? 'item' : 'items'} queued for review.`);
+    return v;
+  }
+
+  async listEvidence(projectId: string): Promise<EvidenceItem[]> {
+    const rows = await this.db.select<EvidenceRow[]>(
+      'SELECT * FROM evidence_items WHERE project_id = ? ORDER BY created_at ASC', [projectId]);
+    return rows.map((r) => ({
+      id: r.id, projectId: r.project_id, title: r.title,
+      source: r.source, detail: r.detail, createdAt: r.created_at,
+    }));
+  }
+
+  async addEvidence(projectId: string, input: { title: string; source?: string; detail?: string }): Promise<EvidenceItem> {
+    const e: EvidenceItem = { id: uid(), projectId, title: input.title, source: input.source ?? '', detail: input.detail ?? '', createdAt: now() };
+    await this.db.execute(
+      'INSERT INTO evidence_items (id, project_id, title, source, detail, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      [e.id, e.projectId, e.title, e.source, e.detail, e.createdAt],
+    );
+    return e;
+  }
+
+  async listImpact(projectId: string): Promise<ImpactItem[]> {
+    const rows = await this.db.select<ImpactRow[]>(
+      `SELECT * FROM impact_queue WHERE project_id = ?
+       ORDER BY CASE status WHEN 'pending' THEN 0 ELSE 1 END, created_at DESC`, [projectId]);
+    return rows.map((r) => ({
+      id: r.id, projectId: r.project_id, triggerKind: r.trigger_kind, triggerId: r.trigger_id,
+      entityKind: r.entity_kind, entityId: r.entity_id, reason: r.reason,
+      status: r.status === 'accepted' || r.status === 'dismissed' ? r.status : 'pending',
+      createdAt: r.created_at, resolvedAt: r.resolved_at,
+    }));
+  }
+
+  async resolveImpact(id: string, status: 'accepted' | 'dismissed'): Promise<void> {
+    await this.db.execute('UPDATE impact_queue SET status = ?, resolved_at = ? WHERE id = ?', [status, now(), id]);
+  }
 }
 
 interface Dump {
@@ -177,12 +287,16 @@ interface Dump {
   decisions: Decision[];
   memory: MemoryEntry[];
   links: Link[];
+  requirements: Requirement[];
+  requirementVersions: RequirementVersion[];
+  evidence: EvidenceItem[];
+  impact: ImpactItem[];
 }
 
 const FALLBACK_KEY = 'tivity-fallback-v1';
 
 function loadDump(): Dump {
-  const empty: Dump = { projects: [], tasks: [], docs: [], decisions: [], memory: [], links: [] };
+  const empty: Dump = { projects: [], tasks: [], docs: [], decisions: [], memory: [], links: [], requirements: [], requirementVersions: [], evidence: [], impact: [] };
   try {
     if (typeof localStorage === 'undefined') return empty;
     const raw = localStorage.getItem(FALLBACK_KEY);
@@ -193,7 +307,7 @@ function loadDump(): Dump {
   }
 }
 
-class BrowserStore implements Store {
+export class BrowserStore implements Store {
   private data: Dump = loadDump();
 
   private save(): void {
@@ -278,6 +392,76 @@ class BrowserStore implements Store {
     this.save();
     return l;
   }
+
+  private note(projectId: string, kind: string, content: string): void {
+    this.data.memory.push({ id: uid(), projectId, kind, content, createdAt: now() });
+  }
+
+  async listRequirements(projectId: string): Promise<Requirement[]> {
+    return this.data.requirements.filter((r) => r.projectId === projectId).sort((a, b) => a.createdAt - b.createdAt);
+  }
+
+  async createRequirement(projectId: string, input: { title: string; body?: string; acceptance?: string }): Promise<Requirement> {
+    const t = now();
+    const req: Requirement = { id: uid(), projectId, title: input.title, status: 'draft', currentVersion: 1, createdAt: t, updatedAt: t };
+    this.data.requirements.push(req);
+    this.data.requirementVersions.push({ id: uid(), requirementId: req.id, version: 1, body: input.body ?? '', acceptance: input.acceptance ?? '', createdAt: t });
+    this.note(projectId, 'requirement', `Requirement created: ${req.title} (v1).`);
+    this.save();
+    return req;
+  }
+
+  async listRequirementVersions(requirementId: string): Promise<RequirementVersion[]> {
+    return this.data.requirementVersions.filter((v) => v.requirementId === requirementId).sort((a, b) => a.version - b.version);
+  }
+
+  async addRequirementVersion(requirementId: string, input: { body: string; acceptance?: string }): Promise<RequirementVersion> {
+    const req = this.data.requirements.find((r) => r.id === requirementId);
+    if (!req) throw new Error(`requirement not found: ${requirementId}`);
+    const version = req.currentVersion + 1;
+    const v: RequirementVersion = { id: uid(), requirementId, version, body: input.body, acceptance: input.acceptance ?? '', createdAt: now() };
+    this.data.requirementVersions.push(v);
+    req.currentVersion = version;
+    req.updatedAt = now();
+    const links = this.data.links.filter((l) => l.projectId === req.projectId);
+    const impacted = findImpacted(links, { kind: 'requirement', id: requirementId });
+    for (const target of impacted) {
+      this.data.impact.push({
+        id: uid(), projectId: req.projectId, triggerKind: 'requirement', triggerId: requirementId,
+        entityKind: target.kind, entityId: target.id, reason: `requirement "${req.title}" v${version}`,
+        status: 'pending', createdAt: now(), resolvedAt: null,
+      });
+    }
+    this.note(req.projectId, 'requirement', `Requirement updated: ${req.title} (v${version}); ${impacted.length} linked ${impacted.length === 1 ? 'item' : 'items'} queued for review.`);
+    this.save();
+    return v;
+  }
+
+  async listEvidence(projectId: string): Promise<EvidenceItem[]> {
+    return this.data.evidence.filter((e) => e.projectId === projectId).sort((a, b) => a.createdAt - b.createdAt);
+  }
+
+  async addEvidence(projectId: string, input: { title: string; source?: string; detail?: string }): Promise<EvidenceItem> {
+    const e: EvidenceItem = { id: uid(), projectId, title: input.title, source: input.source ?? '', detail: input.detail ?? '', createdAt: now() };
+    this.data.evidence.push(e);
+    this.save();
+    return e;
+  }
+
+  async listImpact(projectId: string): Promise<ImpactItem[]> {
+    return this.data.impact
+      .filter((q) => q.projectId === projectId)
+      .sort((a, b) => (a.status === 'pending' ? 0 : 1) - (b.status === 'pending' ? 0 : 1) || b.createdAt - a.createdAt);
+  }
+
+  async resolveImpact(id: string, status: 'accepted' | 'dismissed'): Promise<void> {
+    const q = this.data.impact.find((x) => x.id === id);
+    if (q) {
+      q.status = status;
+      q.resolvedAt = now();
+      this.save();
+    }
+  }
 }
 
 async function ensureSeeded(store: Store): Promise<void> {
@@ -291,6 +475,10 @@ async function ensureSeeded(store: Store): Promise<void> {
   });
   const t = await store.createTask(p.id, 'Connect your first docs and tasks with links');
   const doc = await store.createDoc(p.id, 'Project notes', 'Everything here links together: change one thing, see what it touches.');
+  const req = await store.createRequirement(p.id, { title: 'Offline-first launch', body: 'The app must work fully offline with local SQLite.', acceptance: 'Airplane-mode: CRUD, links and impact check all work.' });
+  const ev = await store.addEvidence(p.id, { title: 'Tauri vs Electron research', source: 'OpenReplay Dec 2025', detail: 'Tauri installer 2-10MB, idle 30-50MB; Electron 80-150MB, 150-300MB idle.' });
+  await store.addLink(p.id, { fromKind: 'evidence', fromId: ev.id, toKind: 'requirement', toId: req.id, relation: 'justifies' });
+  await store.addLink(p.id, { fromKind: 'requirement', fromId: req.id, toKind: 'task', toId: t.id, relation: 'drives' });
   await store.appendMemory(p.id, 'note', 'Seeded the welcome project.');
   await store.addLink(p.id, { fromKind: 'decision', fromId: d.id, toKind: 'task', toId: t.id, relation: 'drives' });
   await store.addLink(p.id, { fromKind: 'task', fromId: t.id, toKind: 'doc', toId: doc.id, relation: 'documents' });

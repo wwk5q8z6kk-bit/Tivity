@@ -115,10 +115,31 @@ inspected layout: pnpm workspaces (apps/*, packages/*) + turbo.json
 (build dependsOn ^build) + data/*.sqlite.db gitignored + drizzle-kit migrations
 (workflow result 5). No premature monorepo scaffolding.
 
+## 0009 — Propagation design — DECIDED: version row + impact queue + auto-memory
+
+| Option | Score notes | Verdict |
+|---|---|---|
+| Impact-queue table (pending/accepted/dismissed) + BFS over links | Vision 5 (explicit no-silent-drift), effort 4, robustness 4 (pure, tested walk) | CHOSEN |
+| Generic event bus/outbox only | Vision 4; effort 3 — review state still needs a queue | Folded in: reason strings carry trigger context; full outbox deferred to M2 sync needs |
+| DB triggers | Robustness 2 — logic hidden from TS, untestable in fallback backend | Rejected |
+| Manual trace maintenance | Vision 1 — explicitly a non-goal (workflow result 1) | Rejected |
+
+Decisive factors: reviewable state (a human or agent can accept/dismiss each
+impacted item) + testability in both backends. New versions propagate
+transitively via findImpacted; v1 creates no queue rows (nothing linked yet).
+
+## 0010 — Evidence model — DECIDED: evidence_items + justify links
+
+EvidenceItem {title, source, detail} linked to requirements through the links
+table with relation `justifies`/`cites`. Rejected: a separate citations table
+(over-normalized for v0) and embedding evidence in the requirement body
+(loses reuse across requirements). Evidence participates in impact display
+but never triggers propagation on its own.
+
 ## Roadmap (from workflow synthesis, surface-adjusted)
 
-- M0 scaffold + core tables + links + impact check (S0+S1 slice) — this build
-- M1 requirements versioning + propagation queue + memory whyRefs (S1+S2+S3+S10)
+- M0 scaffold + core tables + links + impact check (S0+S1 slice) — SHIPPED and verified
+- M1 requirements versioning + propagation queue + memory whyRefs (S1+S2+S3+S10) — SHIPPED and verified
 - M2 GitHub sync + backlog/delivery + monorepo split (S5+S6)
 - M3 design registry + quality gates (S4+S9)
 - M4 agent runtime on Mastra + AWR substrate, audited runs (S7)

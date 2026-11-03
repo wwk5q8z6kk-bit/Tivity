@@ -1,14 +1,16 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import type { Decision, Doc, EntityKind, Link, MemoryEntry, Project, Task } from './core/types';
+import type { Decision, Doc, EntityKind, EvidenceItem, ImpactItem, Link, MemoryEntry, Project, Requirement, RequirementVersion, Task } from './core/types';
 import { createStore, type Store } from './core/store';
 import { findImpacted, shortId, type EntityRef } from './core/links';
 
-type Tab = 'tasks' | 'docs' | 'decisions' | 'memory' | 'links';
+type Tab = 'tasks' | 'docs' | 'decisions' | 'memory' | 'links' | 'requirements' | 'evidence';
 
 const NEXT_STATUS = { todo: 'doing', doing: 'done', done: 'todo' } as const;
 const TABS: Array<{ id: Tab; label: string }> = [
+  { id: 'requirements', label: 'Requirements' },
   { id: 'tasks', label: 'Tasks' },
   { id: 'docs', label: 'Docs' },
+  { id: 'evidence', label: 'Evidence' },
   { id: 'decisions', label: 'Decisions' },
   { id: 'memory', label: 'Memory' },
   { id: 'links', label: 'Links' },
@@ -27,6 +29,11 @@ export default function App() {
   const [memory, setMemory] = useState<MemoryEntry[]>([]);
   const [links, setLinks] = useState<Link[]>([]);
   const [impact, setImpact] = useState<EntityRef[]>([]);
+  const [requirements, setRequirements] = useState<Requirement[]>([]);
+  const [activeReqId, setActiveReqId] = useState('');
+  const [versions, setVersions] = useState<RequirementVersion[]>([]);
+  const [evidence, setEvidence] = useState<EvidenceItem[]>([]);
+  const [queue, setQueue] = useState<ImpactItem[]>([]);
 
   function report(e: unknown): void {
     setError(e instanceof Error ? e.message : String(e));
@@ -53,24 +60,45 @@ export default function App() {
     store.listDecisions(activeId).then(setDecisions).catch(report);
     store.listMemory(activeId).then(setMemory).catch(report);
     store.listLinks(activeId).then(setLinks).catch(report);
+    store.listRequirements(activeId).then((rs) => {
+      setRequirements(rs);
+      setActiveReqId((cur) => (cur && rs.some((r) => r.id === cur) ? cur : (rs[0]?.id ?? '')));
+    }).catch(report);
+    store.listEvidence(activeId).then(setEvidence).catch(report);
+    store.listImpact(activeId).then(setQueue).catch(report);
     setImpact([]);
   }, [store, activeId]);
+
+  useEffect(() => {
+    if (!store || !activeReqId) {
+      setVersions([]);
+      return;
+    }
+    store.listRequirementVersions(activeReqId).then(setVersions).catch(report);
+  }, [store, activeReqId]);
 
   async function reloadActive(): Promise<void> {
     if (!store || !activeId) return;
     try {
-      const [t, d, dec, m, l] = await Promise.all([
+      const [t, d, dec, m, l, rs, ev, q] = await Promise.all([
         store.listTasks(activeId),
         store.listDocs(activeId),
         store.listDecisions(activeId),
         store.listMemory(activeId),
         store.listLinks(activeId),
+        store.listRequirements(activeId),
+        store.listEvidence(activeId),
+        store.listImpact(activeId),
       ]);
       setTasks(t);
       setDocs(d);
       setDecisions(dec);
       setMemory(m);
       setLinks(l);
+      setRequirements(rs);
+      setEvidence(ev);
+      setQueue(q);
+      if (activeReqId) setVersions(await store.listRequirementVersions(activeReqId));
     } catch (e) {
       report(e);
     }
@@ -81,6 +109,8 @@ export default function App() {
     if (kind === 'doc') return docs.find((d) => d.id === id)?.title ?? shortId(id);
     if (kind === 'decision') return decisions.find((d) => d.id === id)?.title ?? shortId(id);
     if (kind === 'memory') return memory.find((m) => m.id === id)?.content.slice(0, 40) ?? shortId(id);
+    if (kind === 'requirement') return requirements.find((r) => r.id === id)?.title ?? shortId(id);
+    if (kind === 'evidence') return evidence.find((e) => e.id === id)?.title ?? shortId(id);
     return `${kind}:${shortId(id)}`;
   }
 
@@ -194,7 +224,64 @@ export default function App() {
     setImpact(findImpacted(links, { kind: kind as EntityKind, id }));
   }
 
+  async function addRequirement(e: FormEvent<HTMLFormElement>): Promise<void> {
+    e.preventDefault();
+    if (!store || !activeId) return;
+    const fd = new FormData(e.currentTarget);
+    const title = String(fd.get('title') ?? '').trim();
+    if (!title) return;
+    try {
+      const r = await store.createRequirement(activeId, { title, body: String(fd.get('body') ?? ''), acceptance: String(fd.get('acceptance') ?? '') });
+      e.currentTarget.reset();
+      await reloadActive();
+      setActiveReqId(r.id);
+    } catch (err) {
+      report(err);
+    }
+  }
+
+  async function addVersion(e: FormEvent<HTMLFormElement>): Promise<void> {
+    e.preventDefault();
+    if (!store || !activeReqId) return;
+    const fd = new FormData(e.currentTarget);
+    const body = String(fd.get('body') ?? '').trim();
+    if (!body) return;
+    try {
+      await store.addRequirementVersion(activeReqId, { body, acceptance: String(fd.get('acceptance') ?? '') });
+      e.currentTarget.reset();
+      await reloadActive();
+    } catch (err) {
+      report(err);
+    }
+  }
+
+  async function addEvidence(e: FormEvent<HTMLFormElement>): Promise<void> {
+    e.preventDefault();
+    if (!store || !activeId) return;
+    const fd = new FormData(e.currentTarget);
+    const title = String(fd.get('title') ?? '').trim();
+    if (!title) return;
+    try {
+      await store.addEvidence(activeId, { title, source: String(fd.get('source') ?? ''), detail: String(fd.get('detail') ?? '') });
+      e.currentTarget.reset();
+      await reloadActive();
+    } catch (err) {
+      report(err);
+    }
+  }
+
+  async function resolveQueue(id: string, status: 'accepted' | 'dismissed'): Promise<void> {
+    if (!store) return;
+    try {
+      await store.resolveImpact(id, status);
+      await reloadActive();
+    } catch (err) {
+      report(err);
+    }
+  }
+
   const active = projects.find((p) => p.id === activeId);
+  const activeReq = requirements.find((r) => r.id === activeReqId);
   const entityOptions = (
     <>
       <optgroup label="Tasks">
@@ -205,6 +292,12 @@ export default function App() {
       </optgroup>
       <optgroup label="Decisions">
         {decisions.map((d) => <option key={d.id} value={`decision:${d.id}`}>{d.title}</option>)}
+      </optgroup>
+      <optgroup label="Requirements">
+        {requirements.map((r) => <option key={r.id} value={`requirement:${r.id}`}>{r.title}</option>)}
+      </optgroup>
+      <optgroup label="Evidence">
+        {evidence.map((e) => <option key={e.id} value={`evidence:${e.id}`}>{e.title}</option>)}
       </optgroup>
     </>
   );
@@ -239,6 +332,64 @@ export default function App() {
             </button>
           ))}
         </div>
+
+        {tab === 'requirements' && (
+          <>
+            <form className="card" onSubmit={addRequirement}>
+              <div className="row"><input type="text" name="title" placeholder="Requirement title" /></div>
+              <div className="row" style={{ marginTop: 8 }}>
+                <textarea name="body" rows={2} placeholder="Body" />
+              </div>
+              <div className="row" style={{ marginTop: 8 }}>
+                <input type="text" name="acceptance" placeholder="Acceptance criteria" />
+              </div>
+              <div className="row" style={{ marginTop: 8 }}><button className="go" type="submit">Add requirement</button></div>
+            </form>
+            <div className="row">
+              {requirements.map((r) => (
+                <button key={r.id} className="ghost" onClick={() => setActiveReqId(r.id)} style={r.id === activeReqId ? { borderColor: 'var(--accent)', color: 'var(--text)' } : undefined}>
+                  {r.title} <span className="pill">v{r.currentVersion}</span>
+                </button>
+              ))}
+            </div>
+            {activeReq == null ? <p className="muted">No requirement selected.</p> : (
+              <>
+                <h3>{activeReq.title} <span className="pill">{activeReq.status}</span></h3>
+                {versions.map((v) => (
+                  <div className="card" key={v.id}>
+                    <h3>v{v.version}</h3>
+                    <p>{v.body || <span className="muted">Empty.</span>}</p>
+                    {v.acceptance ? <p><strong>Acceptance:</strong> {v.acceptance}</p> : null}
+                  </div>
+                ))}
+                <form className="card" onSubmit={addVersion}>
+                  <div className="row"><textarea name="body" rows={2} placeholder="New version body — saving propagates to linked items" /></div>
+                  <div className="row" style={{ marginTop: 8 }}><input type="text" name="acceptance" placeholder="Acceptance criteria" /></div>
+                  <div className="row" style={{ marginTop: 8 }}><button className="go" type="submit">Save v{activeReq.currentVersion + 1}</button></div>
+                </form>
+              </>
+            )}
+          </>
+        )}
+
+        {tab === 'evidence' && (
+          <>
+            <form className="card" onSubmit={addEvidence}>
+              <div className="row"><input type="text" name="title" placeholder="Evidence title" /></div>
+              <div className="row" style={{ marginTop: 8 }}><input type="text" name="source" placeholder="Source (URL, doc, person)" /></div>
+              <div className="row" style={{ marginTop: 8 }}><textarea name="detail" rows={2} placeholder="Detail" /></div>
+              <div className="row" style={{ marginTop: 8 }}><button className="go" type="submit">Add evidence</button></div>
+            </form>
+            {evidence.map((e) => (
+              <div className="card" key={e.id}>
+                <h3>{e.title}</h3>
+                {e.source ? <p><strong>Source:</strong> {e.source}</p> : null}
+                <p>{e.detail || <span className="muted">Empty.</span>}</p>
+              </div>
+            ))}
+            {evidence.length === 0 ? <p className="muted">No evidence yet.</p> : null}
+          </>
+        )}
 
         {tab === 'tasks' && (
           <>
@@ -338,6 +489,18 @@ export default function App() {
               ))}
             </ul>
             {links.length === 0 ? <p className="muted">No links yet.</p> : null}
+            <h3>Review queue</h3>
+            <ul className="clean">
+              {queue.filter((q) => q.status === 'pending').map((q) => (
+                <li key={q.id}>
+                  {q.entityKind}: {titleOf(q.entityKind, q.entityId)}{' '}
+                  <span className="muted">({q.reason})</span>{' '}
+                  <button className="ghost" onClick={() => resolveQueue(q.id, 'accepted')}>accept</button>{' '}
+                  <button className="ghost" onClick={() => resolveQueue(q.id, 'dismissed')}>dismiss</button>
+                </li>
+              ))}
+            </ul>
+            {queue.filter((q) => q.status === 'pending').length === 0 ? <p className="muted">Queue empty — no silent drift.</p> : null}
             <h3>Impact check</h3>
             <form className="row" onSubmit={checkImpact}>
               <select name="entity">{entityOptions}</select>
