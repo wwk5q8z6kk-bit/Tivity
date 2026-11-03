@@ -71,3 +71,52 @@ describe('delivery + external refs', () => {
     expect((await store.getSyncState(`github:${p.id}`))?.cursor).toBe('cursor-1');
   });
 });
+
+describe('design registry', () => {
+  it('links screens, components and requirements through the map', async () => {
+    const store = new BrowserStore();
+    const p = await store.createProject({ name: 'G1' });
+    const home = await store.createScreen(p.id, { name: 'Home', route: '/' });
+    const settings = await store.createScreen(p.id, { name: 'Settings', route: '/settings' });
+    const nav = await store.createComponent(p.id, { name: 'NavBar', kind: 'layout' });
+    await store.addLink(p.id, { fromKind: 'screen', fromId: home.id, toKind: 'component', toId: nav.id, relation: 'contains' });
+    await store.addLink(p.id, { fromKind: 'screen', fromId: home.id, toKind: 'screen', toId: settings.id, relation: 'navigatesTo' });
+    const req = await store.createRequirement(p.id, { title: 'R1' });
+    await store.addLink(p.id, { fromKind: 'requirement', fromId: req.id, toKind: 'screen', toId: home.id, relation: 'realizedBy' });
+    await store.addRequirementVersion(req.id, { body: 'v2' });
+    const queued = (await store.listImpact(p.id)).map((q) => `${q.entityKind}:${q.entityId}`);
+    expect(queued).toContain(`screen:${home.id}`);
+    expect(queued).toContain(`component:${nav.id}`);
+    expect(queued).toContain(`screen:${settings.id}`);
+  });
+});
+
+describe('quality + security + monitoring', () => {
+  it('records runs, gates, findings and checks with history', async () => {
+    const store = new BrowserStore();
+    const p = await store.createProject({ name: 'Q1' });
+    const tc = await store.createTestCase(p.id, 'Login flow');
+    expect(tc.status).toBe('not-run');
+    await store.recordTestRun(tc.id, { status: 'fail', note: 'flaky' });
+    await store.recordTestRun(tc.id, { status: 'pass' });
+    const runs = await store.listTestRuns(tc.id);
+    expect(runs).toHaveLength(2);
+    expect(runs[0].status).toBe('pass');
+    const cases = await store.listTestCases(p.id);
+    expect(cases[0].status).toBe('pass');
+    const gate = await store.createQualityGate(p.id, 'coverage>80');
+    await store.setQualityGateStatus(gate.id, 'pass');
+    const finding = await store.createSecurityFinding(p.id, { title: 'XSS in notes', severity: 'high' });
+    await store.setSecurityFindingStatus(finding.id, 'fixed');
+    const check = await store.createMonitorCheck(p.id, 'api latency');
+    await store.setMonitorCheckStatus(check.id, 'passing', 'p99 180ms');
+    const mem = await store.listMemory(p.id);
+    expect(mem.some((m) => m.kind === 'quality' && m.content.includes('Login flow'))).toBe(true);
+    expect(mem.some((m) => m.content.includes('XSS in notes'))).toBe(true);
+  });
+
+  it('rejects runs for unknown test cases', async () => {
+    const store = new BrowserStore();
+    await expect(store.recordTestRun('missing', { status: 'pass' })).rejects.toThrow();
+  });
+});

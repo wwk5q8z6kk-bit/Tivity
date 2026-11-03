@@ -154,4 +154,70 @@ export const MIGRATIONS: string[] = [
   `CREATE INDEX IF NOT EXISTS idx_prs_project ON pull_requests (project_id)`,
   `CREATE INDEX IF NOT EXISTS idx_releases_project ON releases (project_id)`,
   `CREATE INDEX IF NOT EXISTS idx_refs_entity ON external_refs (entity_kind, entity_id)`,
+  `CREATE TABLE IF NOT EXISTS screens (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    route TEXT NOT NULL DEFAULT '',
+    notes TEXT NOT NULL DEFAULT '',
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS components (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    kind TEXT NOT NULL DEFAULT 'ui',
+    notes TEXT NOT NULL DEFAULT '',
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS test_cases (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'not-run',
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS test_runs (
+    id TEXT PRIMARY KEY,
+    test_case_id TEXT NOT NULL,
+    status TEXT NOT NULL,
+    note TEXT NOT NULL DEFAULT '',
+    created_at INTEGER NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS quality_gates (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS security_findings (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    severity TEXT NOT NULL DEFAULT 'medium',
+    status TEXT NOT NULL DEFAULT 'open',
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS monitor_checks (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'unknown',
+    detail TEXT NOT NULL DEFAULT '',
+    checked_at INTEGER,
+    created_at INTEGER NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_screens_project ON screens (project_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_components_project ON components (project_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_testcases_project ON test_cases (project_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_testruns_case ON test_runs (test_case_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_gates_project ON quality_gates (project_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_findings_project ON security_findings (project_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_checks_project ON monitor_checks (project_id)`,
 ];

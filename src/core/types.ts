@@ -13,7 +13,13 @@ export type EntityKind =
   | 'sprint'
   | 'milestone'
   | 'pull_request'
-  | 'release';
+  | 'release'
+  | 'screen'
+  | 'component'
+  | 'test_case'
+  | 'quality_gate'
+  | 'security_finding'
+  | 'monitor_check';
 
 export interface Project {
   id: string;
@@ -166,4 +172,70 @@ export interface SyncState {
   projectId: string;
   cursor: string;
   updatedAt: number;
+}
+
+export interface Screen {
+  id: string;
+  projectId: string;
+  name: string;
+  route: string;
+  notes: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface DesignComponent {
+  id: string;
+  projectId: string;
+  name: string;
+  kind: string;
+  notes: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface TestCase {
+  id: string;
+  projectId: string;
+  title: string;
+  status: 'not-run' | 'pass' | 'fail';
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface TestRun {
+  id: string;
+  testCaseId: string;
+  status: 'pass' | 'fail';
+  note: string;
+  createdAt: number;
+}
+
+export interface QualityGate {
+  id: string;
+  projectId: string;
+  name: string;
+  status: 'pending' | 'pass' | 'fail';
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface SecurityFinding {
+  id: string;
+  projectId: string;
+  title: string;
+  severity: string;
+  status: 'open' | 'fixed' | 'dismissed';
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface MonitorCheck {
+  id: string;
+  projectId: string;
+  name: string;
+  status: 'unknown' | 'passing' | 'failing';
+  detail: string;
+  checkedAt: number | null;
+  createdAt: number;
 }

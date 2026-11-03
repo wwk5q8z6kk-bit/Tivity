@@ -153,13 +153,38 @@ every field needed by sync (branch, external ids, cursors) ships now, and live s
 waits only on the owner auth decision in 0007.
 Evidence: workflow results 2, 5, 8; decision 0002/0007.
 
+## 0012 — Design registry — DECIDED: screens + components tables, map in links
+
+| Option | Score notes | Verdict |
+|---|---|---|
+| screens + components tables; map structure (contains, navigatesTo) in generic links | License 5, TS-fit 5, effort 5 — zero new plumbing, impact propagation works automatically | CHOSEN |
+| Separate screen_map_edges table | Extra table + parallel walk logic for identical data | Rejected — duplication without benefit at this scale |
+| Canvas/whiteboard editor (AFFiNE-style) | Vision 4, effort 1 — months of work, needs CRDT/sync | Rejected for v0; concepts only |
+
+Decisive factors: reuse of the links substrate (every screen/component is
+impact-traceable from day one) + minimal new code.
+Evidence: decisions 0003, 0009.
+
+## 0013 — Quality/security/monitoring — DECIDED: local registries, manual runs
+
+| Option | Score notes | Verdict |
+|---|---|---|
+| Local registries: test_cases + test_runs history, quality_gates, security_findings, monitor_checks | License 5, local-first 5, effort 4 — works offline, full history | CHOSEN |
+| External CI as source of truth (no local entities) | Local-first 1, robustness 2 — dead offline, no history ownership | Rejected — mirror later like GitHub (0007 pattern) |
+| Blocking release automation on gate status | Vision 4, effort 2 — needs execution engine (M4 agent runtime) | Deferred to M4; v0 records + displays status only |
+
+Decisive factors: offline-first history ownership + M4 keeps the automation door open.
+Dissent: statuses are human-recorded until CI/agent feeds arrive — accepted and
+labeled as such in the UI; no fake automation.
+Evidence: workflow result 1 (S9), decision 0007 pattern.
+
 ## Roadmap (from workflow synthesis, surface-adjusted)
 
 - M0 scaffold + core tables + links + impact check (S0+S1 slice) — SHIPPED and verified
 - M1 requirements versioning + propagation queue + memory whyRefs (S1+S2+S3+S10) — SHIPPED and verified
 - M2a delivery entities + sync-ready refs (S6 slice) — SHIPPED and verified
+- M3 design registry + quality/security/monitoring (S4+S9) — SHIPPED and verified
 - M2b GitHub live sync (needs owner auth decision, 0007) + monorepo split (S5+S6)
-- M3 design registry + quality gates (S4+S9)
 - M4 agent runtime on Mastra + AWR substrate, audited runs (S7)
 - M5 hardening, FTS5/vector search, IDE extension client
 - (Original P5-Tauri-shell milestone folds into M0 per decision 0001 override)

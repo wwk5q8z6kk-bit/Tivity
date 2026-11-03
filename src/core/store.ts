@@ -1,4 +1,4 @@
-import type { Decision, Doc, EvidenceItem, ExternalRef, ImpactItem, Link, MemoryEntry, Milestone, Project, PullRequest, Release, Requirement, RequirementVersion, Sprint, SyncState, Task } from './types';
+import type { Decision, DesignComponent, Doc, EvidenceItem, ExternalRef, ImpactItem, Link, MemoryEntry, Milestone, MonitorCheck, Project, PullRequest, QualityGate, Release, Requirement, RequirementVersion, Screen, SecurityFinding, Sprint, SyncState, Task, TestCase, TestRun } from './types';
 import { MIGRATIONS } from './schema';
 import { findImpacted } from './links';
 
@@ -47,6 +47,23 @@ export interface Store {
   addExternalRef(projectId: string, input: { entityKind: ExternalRef['entityKind']; entityId: string; service: string; externalId: string }): Promise<ExternalRef>;
   getSyncState(key: string): Promise<SyncState | null>;
   setSyncState(projectId: string, key: string, cursor: string): Promise<void>;
+  listScreens(projectId: string): Promise<Screen[]>;
+  createScreen(projectId: string, input: { name: string; route?: string; notes?: string }): Promise<Screen>;
+  listComponents(projectId: string): Promise<DesignComponent[]>;
+  createComponent(projectId: string, input: { name: string; kind?: string; notes?: string }): Promise<DesignComponent>;
+  listTestCases(projectId: string): Promise<TestCase[]>;
+  createTestCase(projectId: string, title: string): Promise<TestCase>;
+  listTestRuns(testCaseId: string): Promise<TestRun[]>;
+  recordTestRun(testCaseId: string, input: { status: 'pass' | 'fail'; note?: string }): Promise<TestRun>;
+  listQualityGates(projectId: string): Promise<QualityGate[]>;
+  createQualityGate(projectId: string, name: string): Promise<QualityGate>;
+  setQualityGateStatus(id: string, status: QualityGate['status']): Promise<void>;
+  listSecurityFindings(projectId: string): Promise<SecurityFinding[]>;
+  createSecurityFinding(projectId: string, input: { title: string; severity?: string }): Promise<SecurityFinding>;
+  setSecurityFindingStatus(id: string, status: SecurityFinding['status']): Promise<void>;
+  listMonitorChecks(projectId: string): Promise<MonitorCheck[]>;
+  createMonitorCheck(projectId: string, name: string): Promise<MonitorCheck>;
+  setMonitorCheckStatus(id: string, status: MonitorCheck['status'], detail?: string): Promise<void>;
 }
 
 interface SqlDb {
@@ -59,6 +76,15 @@ const uid = (): string =>
   typeof crypto !== 'undefined' && 'randomUUID' in crypto
     ? crypto.randomUUID()
     : `${Date.now()}-${Math.floor(Math.random() * 1e9)}`;
+
+// Newest-first with deterministic ties: later insertions win when two rows
+// share a millisecond, matching SQL `ORDER BY created_at DESC, rowid DESC`.
+function newestFirst<T extends { createdAt: number }>(items: T[]): T[] {
+  return items
+    .map((item, i) => ({ item, i }))
+    .sort((a, b) => b.item.createdAt - a.item.createdAt || b.i - a.i)
+    .map(({ item }) => item);
+}
 
 interface ProjectRow { id: string; name: string; summary: string; status: string; created_at: number; updated_at: number }
 interface TaskRow { id: string; project_id: string; title: string; status: string; created_at: number; updated_at: number }
@@ -76,6 +102,13 @@ interface PullRequestRow { id: string; project_id: string; title: string; status
 interface ReleaseRow { id: string; project_id: string; name: string; notes: string; status: string; created_at: number }
 interface ExternalRefRow { id: string; project_id: string; entity_kind: ExternalRef['entityKind']; entity_id: string; service: string; external_id: string; created_at: number }
 interface SyncStateRow { key: string; project_id: string; cursor: string; updated_at: number }
+interface ScreenRow { id: string; project_id: string; name: string; route: string; notes: string; created_at: number; updated_at: number }
+interface ComponentRow { id: string; project_id: string; name: string; kind: string; notes: string; created_at: number; updated_at: number }
+interface TestCaseRow { id: string; project_id: string; title: string; status: string; created_at: number; updated_at: number }
+interface TestRunRow { id: string; test_case_id: string; status: string; note: string; created_at: number }
+interface QualityGateRow { id: string; project_id: string; name: string; status: string; created_at: number; updated_at: number }
+interface SecurityFindingRow { id: string; project_id: string; title: string; severity: string; status: string; created_at: number; updated_at: number }
+interface MonitorCheckRow { id: string; project_id: string; name: string; status: string; detail: string; checked_at: number | null; created_at: number }
 
 const toStatus = (s: string): Task['status'] =>
   s === 'doing' || s === 'done' ? s : 'todo';
@@ -151,7 +184,7 @@ class TauriStore implements Store {
 
   async listDecisions(projectId: string): Promise<Decision[]> {
     const rows = await this.db.select<DecisionRow[]>(
-      'SELECT * FROM decisions WHERE project_id = ? ORDER BY created_at DESC', [projectId]);
+      'SELECT * FROM decisions WHERE project_id = ? ORDER BY created_at DESC, rowid DESC', [projectId]);
     return rows.map((r) => ({
       id: r.id, projectId: r.project_id, title: r.title, context: r.context,
       verdict: r.verdict, createdAt: r.created_at,
@@ -169,7 +202,7 @@ class TauriStore implements Store {
 
   async listMemory(projectId: string): Promise<MemoryEntry[]> {
     const rows = await this.db.select<MemoryRow[]>(
-      'SELECT * FROM memory_entries WHERE project_id = ? ORDER BY created_at DESC', [projectId]);
+      'SELECT * FROM memory_entries WHERE project_id = ? ORDER BY created_at DESC, rowid DESC', [projectId]);
     return rows.map((r) => ({
       id: r.id, projectId: r.project_id, kind: r.kind, content: r.content, createdAt: r.created_at,
     }));
@@ -286,7 +319,7 @@ class TauriStore implements Store {
   async listImpact(projectId: string): Promise<ImpactItem[]> {
     const rows = await this.db.select<ImpactRow[]>(
       `SELECT * FROM impact_queue WHERE project_id = ?
-       ORDER BY CASE status WHEN 'pending' THEN 0 ELSE 1 END, created_at DESC`, [projectId]);
+       ORDER BY CASE status WHEN 'pending' THEN 0 ELSE 1 END, created_at DESC, rowid DESC`, [projectId]);
     return rows.map((r) => ({
       id: r.id, projectId: r.project_id, triggerKind: r.trigger_kind, triggerId: r.trigger_id,
       entityKind: r.entity_kind, entityId: r.entity_id, reason: r.reason,
@@ -346,7 +379,7 @@ class TauriStore implements Store {
 
   async listPullRequests(projectId: string): Promise<PullRequest[]> {
     const rows = await this.db.select<PullRequestRow[]>(
-      'SELECT * FROM pull_requests WHERE project_id = ? ORDER BY created_at DESC', [projectId]);
+      'SELECT * FROM pull_requests WHERE project_id = ? ORDER BY created_at DESC, rowid DESC', [projectId]);
     return rows.map((r) => ({
       id: r.id, projectId: r.project_id, title: r.title,
       status: r.status === 'merged' || r.status === 'closed' ? r.status : 'open',
@@ -371,7 +404,7 @@ class TauriStore implements Store {
 
   async listReleases(projectId: string): Promise<Release[]> {
     const rows = await this.db.select<ReleaseRow[]>(
-      'SELECT * FROM releases WHERE project_id = ? ORDER BY created_at DESC', [projectId]);
+      'SELECT * FROM releases WHERE project_id = ? ORDER BY created_at DESC, rowid DESC', [projectId]);
     return rows.map((r) => ({
       id: r.id, projectId: r.project_id, name: r.name,
       notes: r.notes, status: r.status, createdAt: r.created_at,
@@ -418,6 +451,161 @@ class TauriStore implements Store {
       [key, projectId, cursor, now()],
     );
   }
+
+  async listScreens(projectId: string): Promise<Screen[]> {
+    const rows = await this.db.select<ScreenRow[]>(
+      'SELECT * FROM screens WHERE project_id = ? ORDER BY created_at ASC', [projectId]);
+    return rows.map((r) => ({
+      id: r.id, projectId: r.project_id, name: r.name, route: r.route,
+      notes: r.notes, createdAt: r.created_at, updatedAt: r.updated_at,
+    }));
+  }
+
+  async createScreen(projectId: string, input: { name: string; route?: string; notes?: string }): Promise<Screen> {
+    const t = now();
+    const s: Screen = { id: uid(), projectId, name: input.name, route: input.route ?? '', notes: input.notes ?? '', createdAt: t, updatedAt: t };
+    await this.db.execute(
+      'INSERT INTO screens (id, project_id, name, route, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [s.id, s.projectId, s.name, s.route, s.notes, s.createdAt, s.updatedAt],
+    );
+    await this.note(projectId, 'design', `Screen added: ${s.name}.`);
+    return s;
+  }
+
+  async listComponents(projectId: string): Promise<DesignComponent[]> {
+    const rows = await this.db.select<ComponentRow[]>(
+      'SELECT * FROM components WHERE project_id = ? ORDER BY created_at ASC', [projectId]);
+    return rows.map((r) => ({
+      id: r.id, projectId: r.project_id, name: r.name, kind: r.kind,
+      notes: r.notes, createdAt: r.created_at, updatedAt: r.updated_at,
+    }));
+  }
+
+  async createComponent(projectId: string, input: { name: string; kind?: string; notes?: string }): Promise<DesignComponent> {
+    const t = now();
+    const c: DesignComponent = { id: uid(), projectId, name: input.name, kind: input.kind ?? 'ui', notes: input.notes ?? '', createdAt: t, updatedAt: t };
+    await this.db.execute(
+      'INSERT INTO components (id, project_id, name, kind, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [c.id, c.projectId, c.name, c.kind, c.notes, c.createdAt, c.updatedAt],
+    );
+    await this.note(projectId, 'design', `Component registered: ${c.name}.`);
+    return c;
+  }
+
+  async listTestCases(projectId: string): Promise<TestCase[]> {
+    const rows = await this.db.select<TestCaseRow[]>(
+      'SELECT * FROM test_cases WHERE project_id = ? ORDER BY created_at ASC', [projectId]);
+    return rows.map((r) => ({
+      id: r.id, projectId: r.project_id, title: r.title,
+      status: r.status === 'pass' || r.status === 'fail' ? r.status : 'not-run',
+      createdAt: r.created_at, updatedAt: r.updated_at,
+    }));
+  }
+
+  async createTestCase(projectId: string, title: string): Promise<TestCase> {
+    const t = now();
+    const c: TestCase = { id: uid(), projectId, title, status: 'not-run', createdAt: t, updatedAt: t };
+    await this.db.execute(
+      'INSERT INTO test_cases (id, project_id, title, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
+      [c.id, c.projectId, c.title, c.status, c.createdAt, c.updatedAt],
+    );
+    return c;
+  }
+
+  async listTestRuns(testCaseId: string): Promise<TestRun[]> {
+    const rows = await this.db.select<TestRunRow[]>(
+      'SELECT * FROM test_runs WHERE test_case_id = ? ORDER BY created_at DESC, rowid DESC', [testCaseId]);
+    return rows.map((r) => ({
+      id: r.id, testCaseId: r.test_case_id, status: r.status === 'fail' ? 'fail' : 'pass',
+      note: r.note, createdAt: r.created_at,
+    }));
+  }
+
+  async recordTestRun(testCaseId: string, input: { status: 'pass' | 'fail'; note?: string }): Promise<TestRun> {
+    const cases = await this.db.select<TestCaseRow[]>('SELECT * FROM test_cases WHERE id = ?', [testCaseId]);
+    const c = cases[0];
+    if (!c) throw new Error(`test case not found: ${testCaseId}`);
+    const run: TestRun = { id: uid(), testCaseId, status: input.status, note: input.note ?? '', createdAt: now() };
+    await this.db.execute(
+      'INSERT INTO test_runs (id, test_case_id, status, note, created_at) VALUES (?, ?, ?, ?, ?)',
+      [run.id, run.testCaseId, run.status, run.note, run.createdAt],
+    );
+    await this.db.execute('UPDATE test_cases SET status = ?, updated_at = ? WHERE id = ?', [input.status, now(), testCaseId]);
+    await this.note(c.project_id, 'quality', `Test ${input.status === 'pass' ? 'passed' : 'failed'}: ${c.title}.`);
+    return run;
+  }
+
+  async listQualityGates(projectId: string): Promise<QualityGate[]> {
+    const rows = await this.db.select<QualityGateRow[]>(
+      'SELECT * FROM quality_gates WHERE project_id = ? ORDER BY created_at ASC', [projectId]);
+    return rows.map((r) => ({
+      id: r.id, projectId: r.project_id, name: r.name,
+      status: r.status === 'pass' || r.status === 'fail' ? r.status : 'pending',
+      createdAt: r.created_at, updatedAt: r.updated_at,
+    }));
+  }
+
+  async createQualityGate(projectId: string, name: string): Promise<QualityGate> {
+    const t = now();
+    const g: QualityGate = { id: uid(), projectId, name, status: 'pending', createdAt: t, updatedAt: t };
+    await this.db.execute(
+      'INSERT INTO quality_gates (id, project_id, name, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
+      [g.id, g.projectId, g.name, g.status, g.createdAt, g.updatedAt],
+    );
+    return g;
+  }
+
+  async setQualityGateStatus(id: string, status: QualityGate['status']): Promise<void> {
+    await this.db.execute('UPDATE quality_gates SET status = ?, updated_at = ? WHERE id = ?', [status, now(), id]);
+  }
+
+  async listSecurityFindings(projectId: string): Promise<SecurityFinding[]> {
+    const rows = await this.db.select<SecurityFindingRow[]>(
+      'SELECT * FROM security_findings WHERE project_id = ? ORDER BY created_at DESC, rowid DESC', [projectId]);
+    return rows.map((r) => ({
+      id: r.id, projectId: r.project_id, title: r.title, severity: r.severity,
+      status: r.status === 'fixed' || r.status === 'dismissed' ? r.status : 'open',
+      createdAt: r.created_at, updatedAt: r.updated_at,
+    }));
+  }
+
+  async createSecurityFinding(projectId: string, input: { title: string; severity?: string }): Promise<SecurityFinding> {
+    const t = now();
+    const f: SecurityFinding = { id: uid(), projectId, title: input.title, severity: input.severity ?? 'medium', status: 'open', createdAt: t, updatedAt: t };
+    await this.db.execute(
+      'INSERT INTO security_findings (id, project_id, title, severity, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [f.id, f.projectId, f.title, f.severity, f.status, f.createdAt, f.updatedAt],
+    );
+    await this.note(projectId, 'quality', `Security finding opened: ${f.title} (${f.severity}).`);
+    return f;
+  }
+
+  async setSecurityFindingStatus(id: string, status: SecurityFinding['status']): Promise<void> {
+    await this.db.execute('UPDATE security_findings SET status = ?, updated_at = ? WHERE id = ?', [status, now(), id]);
+  }
+
+  async listMonitorChecks(projectId: string): Promise<MonitorCheck[]> {
+    const rows = await this.db.select<MonitorCheckRow[]>(
+      'SELECT * FROM monitor_checks WHERE project_id = ? ORDER BY created_at ASC', [projectId]);
+    return rows.map((r) => ({
+      id: r.id, projectId: r.project_id, name: r.name,
+      status: r.status === 'passing' || r.status === 'failing' ? r.status : 'unknown',
+      detail: r.detail, checkedAt: r.checked_at, createdAt: r.created_at,
+    }));
+  }
+
+  async createMonitorCheck(projectId: string, name: string): Promise<MonitorCheck> {
+    const c: MonitorCheck = { id: uid(), projectId, name, status: 'unknown', detail: '', checkedAt: null, createdAt: now() };
+    await this.db.execute(
+      'INSERT INTO monitor_checks (id, project_id, name, status, detail, checked_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [c.id, c.projectId, c.name, c.status, c.detail, c.checkedAt, c.createdAt],
+    );
+    return c;
+  }
+
+  async setMonitorCheckStatus(id: string, status: MonitorCheck['status'], detail?: string): Promise<void> {
+    await this.db.execute('UPDATE monitor_checks SET status = ?, detail = ?, checked_at = ? WHERE id = ?', [status, detail ?? '', now(), id]);
+  }
 }
 
 interface Dump {
@@ -437,12 +625,19 @@ interface Dump {
   releases: Release[];
   externalRefs: ExternalRef[];
   syncState: SyncState[];
+  screens: Screen[];
+  components: DesignComponent[];
+  testCases: TestCase[];
+  testRuns: TestRun[];
+  qualityGates: QualityGate[];
+  securityFindings: SecurityFinding[];
+  monitorChecks: MonitorCheck[];
 }
 
 const FALLBACK_KEY = 'tivity-fallback-v1';
 
 function loadDump(): Dump {
-  const empty: Dump = { projects: [], tasks: [], docs: [], decisions: [], memory: [], links: [], requirements: [], requirementVersions: [], evidence: [], impact: [], sprints: [], milestones: [], pullRequests: [], releases: [], externalRefs: [], syncState: [] };
+  const empty: Dump = { projects: [], tasks: [], docs: [], decisions: [], memory: [], links: [], requirements: [], requirementVersions: [], evidence: [], impact: [], sprints: [], milestones: [], pullRequests: [], releases: [], externalRefs: [], syncState: [], screens: [], components: [], testCases: [], testRuns: [], qualityGates: [], securityFindings: [], monitorChecks: [] };
   try {
     if (typeof localStorage === 'undefined') return empty;
     const raw = localStorage.getItem(FALLBACK_KEY);
@@ -507,7 +702,7 @@ export class BrowserStore implements Store {
   }
 
   async listDecisions(projectId: string): Promise<Decision[]> {
-    return this.data.decisions.filter((d) => d.projectId === projectId).sort((a, b) => b.createdAt - a.createdAt);
+    return newestFirst(this.data.decisions.filter((d) => d.projectId === projectId));
   }
 
   async recordDecision(projectId: string, input: { title: string; context?: string; verdict: string }): Promise<Decision> {
@@ -518,7 +713,7 @@ export class BrowserStore implements Store {
   }
 
   async listMemory(projectId: string): Promise<MemoryEntry[]> {
-    return this.data.memory.filter((m) => m.projectId === projectId).sort((a, b) => b.createdAt - a.createdAt);
+    return newestFirst(this.data.memory.filter((m) => m.projectId === projectId));
   }
 
   async appendMemory(projectId: string, kind: string, content: string): Promise<MemoryEntry> {
@@ -597,7 +792,9 @@ export class BrowserStore implements Store {
   async listImpact(projectId: string): Promise<ImpactItem[]> {
     return this.data.impact
       .filter((q) => q.projectId === projectId)
-      .sort((a, b) => (a.status === 'pending' ? 0 : 1) - (b.status === 'pending' ? 0 : 1) || b.createdAt - a.createdAt);
+      .map((q, i) => ({ q, i }))
+      .sort((a, b) => (a.q.status === 'pending' ? 0 : 1) - (b.q.status === 'pending' ? 0 : 1) || b.q.createdAt - a.q.createdAt || b.i - a.i)
+      .map(({ q }) => q);
   }
 
   async resolveImpact(id: string, status: 'accepted' | 'dismissed'): Promise<void> {
@@ -645,7 +842,7 @@ export class BrowserStore implements Store {
   }
 
   async listPullRequests(projectId: string): Promise<PullRequest[]> {
-    return this.data.pullRequests.filter((p) => p.projectId === projectId).sort((a, b) => b.createdAt - a.createdAt);
+    return newestFirst(this.data.pullRequests.filter((p) => p.projectId === projectId));
   }
 
   async createPullRequest(projectId: string, input: { title: string; branch?: string }): Promise<PullRequest> {
@@ -667,7 +864,7 @@ export class BrowserStore implements Store {
   }
 
   async listReleases(projectId: string): Promise<Release[]> {
-    return this.data.releases.filter((r) => r.projectId === projectId).sort((a, b) => b.createdAt - a.createdAt);
+    return newestFirst(this.data.releases.filter((r) => r.projectId === projectId));
   }
 
   async createRelease(projectId: string, input: { name: string; notes?: string }): Promise<Release> {
@@ -703,6 +900,124 @@ export class BrowserStore implements Store {
     }
     this.save();
   }
+
+  async listScreens(projectId: string): Promise<Screen[]> {
+    return this.data.screens.filter((s) => s.projectId === projectId).sort((a, b) => a.createdAt - b.createdAt);
+  }
+
+  async createScreen(projectId: string, input: { name: string; route?: string; notes?: string }): Promise<Screen> {
+    const t = now();
+    const s: Screen = { id: uid(), projectId, name: input.name, route: input.route ?? '', notes: input.notes ?? '', createdAt: t, updatedAt: t };
+    this.data.screens.push(s);
+    this.note(projectId, 'design', `Screen added: ${s.name}.`);
+    this.save();
+    return s;
+  }
+
+  async listComponents(projectId: string): Promise<DesignComponent[]> {
+    return this.data.components.filter((c) => c.projectId === projectId).sort((a, b) => a.createdAt - b.createdAt);
+  }
+
+  async createComponent(projectId: string, input: { name: string; kind?: string; notes?: string }): Promise<DesignComponent> {
+    const t = now();
+    const c: DesignComponent = { id: uid(), projectId, name: input.name, kind: input.kind ?? 'ui', notes: input.notes ?? '', createdAt: t, updatedAt: t };
+    this.data.components.push(c);
+    this.note(projectId, 'design', `Component registered: ${c.name}.`);
+    this.save();
+    return c;
+  }
+
+  async listTestCases(projectId: string): Promise<TestCase[]> {
+    return this.data.testCases.filter((c) => c.projectId === projectId).sort((a, b) => a.createdAt - b.createdAt);
+  }
+
+  async createTestCase(projectId: string, title: string): Promise<TestCase> {
+    const t = now();
+    const c: TestCase = { id: uid(), projectId, title, status: 'not-run', createdAt: t, updatedAt: t };
+    this.data.testCases.push(c);
+    this.save();
+    return c;
+  }
+
+  async listTestRuns(testCaseId: string): Promise<TestRun[]> {
+    return newestFirst(this.data.testRuns.filter((r) => r.testCaseId === testCaseId));
+  }
+
+  async recordTestRun(testCaseId: string, input: { status: 'pass' | 'fail'; note?: string }): Promise<TestRun> {
+    const c = this.data.testCases.find((x) => x.id === testCaseId);
+    if (!c) throw new Error(`test case not found: ${testCaseId}`);
+    const run: TestRun = { id: uid(), testCaseId, status: input.status, note: input.note ?? '', createdAt: now() };
+    this.data.testRuns.push(run);
+    c.status = input.status;
+    c.updatedAt = now();
+    this.note(c.projectId, 'quality', `Test ${input.status === 'pass' ? 'passed' : 'failed'}: ${c.title}.`);
+    this.save();
+    return run;
+  }
+
+  async listQualityGates(projectId: string): Promise<QualityGate[]> {
+    return this.data.qualityGates.filter((g) => g.projectId === projectId).sort((a, b) => a.createdAt - b.createdAt);
+  }
+
+  async createQualityGate(projectId: string, name: string): Promise<QualityGate> {
+    const t = now();
+    const g: QualityGate = { id: uid(), projectId, name, status: 'pending', createdAt: t, updatedAt: t };
+    this.data.qualityGates.push(g);
+    this.save();
+    return g;
+  }
+
+  async setQualityGateStatus(id: string, status: QualityGate['status']): Promise<void> {
+    const g = this.data.qualityGates.find((x) => x.id === id);
+    if (g) {
+      g.status = status;
+      g.updatedAt = now();
+      this.save();
+    }
+  }
+
+  async listSecurityFindings(projectId: string): Promise<SecurityFinding[]> {
+    return newestFirst(this.data.securityFindings.filter((f) => f.projectId === projectId));
+  }
+
+  async createSecurityFinding(projectId: string, input: { title: string; severity?: string }): Promise<SecurityFinding> {
+    const t = now();
+    const f: SecurityFinding = { id: uid(), projectId, title: input.title, severity: input.severity ?? 'medium', status: 'open', createdAt: t, updatedAt: t };
+    this.data.securityFindings.push(f);
+    this.note(projectId, 'quality', `Security finding opened: ${f.title} (${f.severity}).`);
+    this.save();
+    return f;
+  }
+
+  async setSecurityFindingStatus(id: string, status: SecurityFinding['status']): Promise<void> {
+    const f = this.data.securityFindings.find((x) => x.id === id);
+    if (f) {
+      f.status = status;
+      f.updatedAt = now();
+      this.save();
+    }
+  }
+
+  async listMonitorChecks(projectId: string): Promise<MonitorCheck[]> {
+    return this.data.monitorChecks.filter((c) => c.projectId === projectId).sort((a, b) => a.createdAt - b.createdAt);
+  }
+
+  async createMonitorCheck(projectId: string, name: string): Promise<MonitorCheck> {
+    const c: MonitorCheck = { id: uid(), projectId, name, status: 'unknown', detail: '', checkedAt: null, createdAt: now() };
+    this.data.monitorChecks.push(c);
+    this.save();
+    return c;
+  }
+
+  async setMonitorCheckStatus(id: string, status: MonitorCheck['status'], detail?: string): Promise<void> {
+    const c = this.data.monitorChecks.find((x) => x.id === id);
+    if (c) {
+      c.status = status;
+      c.detail = detail ?? '';
+      c.checkedAt = now();
+      this.save();
+    }
+  }
 }
 
 async function ensureSeeded(store: Store): Promise<void> {
@@ -723,6 +1038,9 @@ async function ensureSeeded(store: Store): Promise<void> {
   const sprint = await store.createSprint(p.id, { name: 'Sprint 1' });
   await store.setSprintStatus(sprint.id, 'active');
   await store.addLink(p.id, { fromKind: 'task', fromId: t.id, toKind: 'sprint', toId: sprint.id, relation: 'partOf' });
+  const screen = await store.createScreen(p.id, { name: 'Home', route: '/' });
+  const comp = await store.createComponent(p.id, { name: 'Sidebar', kind: 'layout' });
+  await store.addLink(p.id, { fromKind: 'screen', fromId: screen.id, toKind: 'component', toId: comp.id, relation: 'contains' });
   await store.appendMemory(p.id, 'note', 'Seeded the welcome project.');
   await store.addLink(p.id, { fromKind: 'decision', fromId: d.id, toKind: 'task', toId: t.id, relation: 'drives' });
   await store.addLink(p.id, { fromKind: 'task', fromId: t.id, toKind: 'doc', toId: doc.id, relation: 'documents' });
