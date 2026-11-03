@@ -1,0 +1,33 @@
+{
+  "name": "@tivity/desktop",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Tivity desktop app: React UI + Tauri shell + store wiring",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-sql": "^2",
+    "@tivity/core": "workspace:*",
+    "@tivity/github-sync": "workspace:*",
+    "react": "^19",
+    "react-dom": "^19"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2",
+    "@types/node": "^26.6.6",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^4",
+    "typescript": "~5.8",
+    "vite": "^6"
+  }
+}

@@ -66,7 +66,7 @@ export interface Store {
   setMonitorCheckStatus(id: string, status: MonitorCheck['status'], detail?: string): Promise<void>;
 }
 
-interface SqlDb {
+export interface SqlDb {
   execute(query: string, params?: unknown[]): Promise<unknown>;
   select<T>(query: string, params?: unknown[]): Promise<T>;
 }
@@ -113,7 +113,7 @@ interface MonitorCheckRow { id: string; project_id: string; name: string; status
 const toStatus = (s: string): Task['status'] =>
   s === 'doing' || s === 'done' ? s : 'todo';
 
-class TauriStore implements Store {
+export class TauriStore implements Store {
   constructor(private db: SqlDb) {}
 
   async migrate(): Promise<void> {
@@ -1020,7 +1020,7 @@ export class BrowserStore implements Store {
   }
 }
 
-async function ensureSeeded(store: Store): Promise<void> {
+export async function ensureSeeded(store: Store): Promise<void> {
   const existing = await store.listProjects();
   if (existing.length > 0) return;
   const p = await store.createProject({ name: 'Welcome to Tivity', summary: 'A connected sample: decision → task → doc, all linked.' });
@@ -1046,19 +1046,5 @@ async function ensureSeeded(store: Store): Promise<void> {
   await store.addLink(p.id, { fromKind: 'task', fromId: t.id, toKind: 'doc', toId: doc.id, relation: 'documents' });
 }
 
-export type Backend = 'tauri-sql' | 'browser';
-
-export async function createStore(): Promise<{ store: Store; backend: Backend }> {
-  try {
-    const mod = await import('@tauri-apps/plugin-sql');
-    const db = (await mod.default.load('sqlite:tivity.db')) as unknown as SqlDb;
-    const store = new TauriStore(db);
-    await store.migrate();
-    await ensureSeeded(store);
-    return { store, backend: 'tauri-sql' };
-  } catch {
-    const store = new BrowserStore();
-    await ensureSeeded(store);
-    return { store, backend: 'browser' };
-  }
-}
+// App-side wiring (Tauri plugin load + backend selection) lives in
+// apps/desktop/src/store-setup.ts so this package stays dependency-free.

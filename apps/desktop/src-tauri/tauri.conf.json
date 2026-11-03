@@ -5,7 +5,9 @@
   "identifier": "com.tivity.app",
   "build": {
     "devUrl": "http://localhost:1420",
-    "frontendDist": "../dist"
+    "frontendDist": "../dist",
+    "beforeDevCommand": "pnpm dev",
+    "beforeBuildCommand": "pnpm build"
   },
   "app": {
     "windows": [

@@ -3,31 +3,15 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Tivity — AI-native Project Operating System (Tauri v0 shell + connected core)",
+  "description": "Tivity — AI-native Project Operating System (pnpm monorepo)",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc --noEmit && vite build",
-    "preview": "vite preview",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "tauri": "tauri",
-    "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
-  },
-  "dependencies": {
-    "@tauri-apps/api": "^2",
-    "@tauri-apps/plugin-sql": "^2",
-    "react": "^19",
-    "react-dom": "^19"
-  },
-  "devDependencies": {
-    "@tauri-apps/cli": "^2",
-    "@types/node": "^26.6.6",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "@vitejs/plugin-react": "^4",
-    "typescript": "~5.8",
-    "vite": "^6",
-    "vitest": "^3"
+    "dev": "pnpm --filter @tivity/desktop dev",
+    "build": "pnpm --filter @tivity/desktop build",
+    "preview": "pnpm --filter @tivity/desktop preview",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm --filter @tivity/core --filter @tivity/github-sync test",
+    "tauri": "pnpm --filter @tivity/desktop tauri",
+    "tauri:dev": "pnpm --filter @tivity/desktop tauri:dev",
+    "tauri:build": "pnpm --filter @tivity/desktop tauri:build"
   }
 }

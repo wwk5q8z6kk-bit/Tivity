@@ -1,9 +1,10 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import type { Decision, DesignComponent, Doc, EntityKind, EvidenceItem, ExternalRef, ImpactItem, Link, MemoryEntry, Milestone, MonitorCheck, Project, PullRequest, QualityGate, Release, Requirement, RequirementVersion, Screen, SecurityFinding, Sprint, Task, TestCase, TestRun } from './core/types';
-import { createStore, type Store } from './core/store';
-import { findImpacted, shortId, type EntityRef } from './core/links';
+import type { Decision, DesignComponent, Doc, EntityKind, EvidenceItem, ExternalRef, ImpactItem, Link, MemoryEntry, Milestone, MonitorCheck, Project, PullRequest, QualityGate, Release, Requirement, RequirementVersion, Screen, SecurityFinding, Sprint, Task, TestCase, TestRun } from '@tivity/core';
+import type { Store } from '@tivity/core';
+import { createStore } from './store-setup';
+import { findImpacted, shortId, type EntityRef } from '@tivity/core';
 
-type Tab = 'tasks' | 'docs' | 'decisions' | 'memory' | 'links' | 'requirements' | 'evidence' | 'delivery' | 'design' | 'quality';
+type Tab = 'tasks' | 'docs' | 'decisions' | 'memory' | 'links' | 'requirements' | 'evidence' | 'delivery' | 'design' | 'quality' | 'sync';
 
 const NEXT_STATUS = { todo: 'doing', doing: 'done', done: 'todo' } as const;
 const NEXT_SPRINT = { planned: 'active', active: 'closed', closed: 'planned' } as const;
@@ -14,6 +15,7 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'requirements', label: 'Requirements' },
   { id: 'tasks', label: 'Tasks' },
   { id: 'delivery', label: 'Delivery' },
+  { id: 'sync', label: 'Sync' },
   { id: 'docs', label: 'Docs' },
   { id: 'evidence', label: 'Evidence' },
   { id: 'design', label: 'Design' },
@@ -54,6 +56,8 @@ export default function App() {
   const [gates, setGates] = useState<QualityGate[]>([]);
   const [findings, setFindings] = useState<SecurityFinding[]>([]);
   const [checks, setChecks] = useState<MonitorCheck[]>([]);
+  const [syncResult, setSyncResult] = useState('');
+  const [syncing, setSyncing] = useState(false);
 
   function report(e: unknown): void {
     setError(e instanceof Error ? e.message : String(e));
@@ -588,6 +592,31 @@ export default function App() {
     }
   }
 
+  async function pullNow(e: FormEvent<HTMLFormElement>): Promise<void> {
+    e.preventDefault();
+    if (!store || !activeId || syncing) return;
+    const fd = new FormData(e.currentTarget);
+    const owner = String(fd.get('owner') ?? '').trim();
+    const repo = String(fd.get('repo') ?? '').trim();
+    const token = String(fd.get('token') ?? '').trim();
+    if (!owner || !repo || !token) {
+      setSyncResult('Owner, repo and token are all required.');
+      return;
+    }
+    setSyncing(true);
+    setSyncResult('Pulling…');
+    try {
+      const { createOctokitClient, pullIssuesToTasks } = await import('@tivity/github-sync');
+      const r = await pullIssuesToTasks(store, createOctokitClient(token), activeId, owner, repo);
+      setSyncResult(`Pulled ${owner}/${repo}: ${r.created} new tasks, ${r.skipped} already linked. (${r.cursor})`);
+      await reloadActive();
+    } catch (err) {
+      setSyncResult(`Sync failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setSyncing(false);
+    }
+  }
+
   const active = projects.find((p) => p.id === activeId);
   const activeReq = requirements.find((r) => r.id === activeReqId);
   const activeCase = testCases.find((c) => c.id === activeCaseId);
@@ -911,6 +940,21 @@ export default function App() {
                 <button className="ghost" type="submit">Update</button>
               </form>
             ) : null}
+          </>
+        )}
+
+        {tab === 'sync' && (
+          <>
+            <p className="muted">Pull-only: GitHub issues become linked tasks. Push sync arrives with the App decision (0007). Your token stays in memory — it is never stored.</p>
+            <form className="card" onSubmit={pullNow}>
+              <div className="row">
+                <input type="text" name="owner" placeholder="owner" style={{ maxWidth: 160 }} />
+                <input type="text" name="repo" placeholder="repo" style={{ maxWidth: 160 }} />
+                <input type="password" name="token" placeholder="fine-grained PAT (issues: read)" />
+                <button className="go" type="submit" disabled={syncing}>Pull issues</button>
+              </div>
+            </form>
+            {syncResult ? <p>{syncResult}</p> : null}
           </>
         )}
 

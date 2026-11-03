@@ -178,13 +178,45 @@ Dissent: statuses are human-recorded until CI/agent feeds arrive — accepted an
 labeled as such in the UI; no fake automation.
 Evidence: workflow result 1 (S9), decision 0007 pattern.
 
+## 0014 — Monorepo shape — DECIDED: pnpm workspaces, no orchestrator yet
+
+| Option | Score notes | Verdict |
+|---|---|---|
+| pnpm workspaces (apps/*, packages/*) + root scripts via --filter/-r | Effort 4, robustness 4 — native pnpm, zero new tools | CHOSEN |
+| + Turborepo orchestrator | Pays off at 5+ packages or slow CI; 3 packages today | Rejected for now — revisit when a 4th package lands or CI needs caching |
+| Nx | Heavier than the problem (workflow result 5 cites both; Turborepo pattern is lighter) | Rejected |
+| Stay single-package | Blocks M4 worker from sharing core without copy-paste | Rejected |
+
+Shape: apps/desktop (React + Tauri shell + store wiring), packages/core
+(pure TS: types, schema, links, both store backends), packages/github-sync
+(Octokit pull → tasks). Core consumes TS source directly (no build step).
+Dissent: splitting one app is slightly early — accepted, because M4's worker
+is next and splitting now means sync is born in the right place instead of
+being migrated twice.
+Evidence: workflow result 5 (finografic/turborepo inspection).
+
+## 0015 — Sync design — DECIDED: pull-only v0, token in memory
+
+| Option | Score notes | Verdict |
+|---|---|---|
+| Pull-only: GitHub issues → tasks + external_refs + cursor, idempotent re-pull | Vision 4, effort 4, robustness 4 (fake-client tested, no network in tests) | CHOSEN for v0, labeled pull-only in UI |
+| Bidirectional now | Needs conflict resolution + the App-vs-PAT call (0007) | Rejected for v0 — arrives with M2c |
+| Token in component memory only, never persisted | Robustness 4 (nothing to leak on disk), effort 5 | CHOSEN — OS keychain deferred with App decision |
+| Octokit official + throttling + retry plugins | Inspected docs (0007): paginate, rate-limit handlers required | CHOSEN — no community wrappers |
+| Skip PRs in issue listing | PRs map to pull_requests entities, a separate sync path | CHOSEN — issues only until PR sync is designed |
+
+Decisive factors: honesty (labeled limits, no fake push) + testability (injected
+client) + the recorded 0007 provisional path (single-user PAT).
+Evidence: workflow result 5 (Octokit inspection), decision 0007.
+
 ## Roadmap (from workflow synthesis, surface-adjusted)
 
 - M0 scaffold + core tables + links + impact check (S0+S1 slice) — SHIPPED and verified
 - M1 requirements versioning + propagation queue + memory whyRefs (S1+S2+S3+S10) — SHIPPED and verified
 - M2a delivery entities + sync-ready refs (S6 slice) — SHIPPED and verified
 - M3 design registry + quality/security/monitoring (S4+S9) — SHIPPED and verified
-- M2b GitHub live sync (needs owner auth decision, 0007) + monorepo split (S5+S6)
+- M2b monorepo split + GitHub pull sync, single-user PAT (S5+S6 slice) — SHIPPED and verified
+- M2c GitHub push sync + App auth (needs owner auth decision, 0007)
 - M4 agent runtime on Mastra + AWR substrate, audited runs (S7)
 - M5 hardening, FTS5/vector search, IDE extension client
 - (Original P5-Tauri-shell milestone folds into M0 per decision 0001 override)
