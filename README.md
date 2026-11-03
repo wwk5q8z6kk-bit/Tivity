@@ -2,7 +2,7 @@
 
 One workspace. One source of truth. Every project. Every stage. Every agent.
 
-Status: M0–M5a shipped and verified (two-way GitHub sync, LLM agents, FTS5 search). Build target is a launchable app —
+Status: M0–M5b shipped and verified (two-way GitHub sync, LLM agents, FTS5 search, IDE clients). Build target is a launchable app —
 task owner chose "whatever is best, most efficient, robust, and AI-native."
 
 Decisions so far:
@@ -38,8 +38,10 @@ Decisions with scored options: [docs/decisions/README.md](docs/decisions/README.
 - `packages/core` — domain model, SQLite schema, links, store backends (dependency-free)
 - `packages/github-sync` — Octokit issue pull into linked tasks (pull-only v0)
 - `packages/agent-runtime` — lease-claim job runner with audited runs, local rule handlers (housekeeping, impact-nudge), and the `agent-task` LLM job (Ollama-local default, OpenAI-compatible override); Mastra Agent/tools verified for the Node/worker path
+- `packages/ide-client` — IDE data path: node:sqlite opener for the desktop database, shared ops, MCP stdio server (`tivity-mcp`, 7 tools)
+- `apps/vscode-tivity` — VS Code extension: 5 commands over the same database (see its README)
 
-Root commands fan out: `pnpm typecheck` (all packages), `pnpm test` (core + sync suites).
+Root commands fan out: `pnpm typecheck` (all packages), `pnpm test` (core + sync + runtime + IDE suites).
 
 ## GitHub sync (two-way on PAT)
 

@@ -314,6 +314,49 @@ means FTS absence anywhere (older SQLite, odd drivers) degrades quality, never
 availability.
 Evidence: node:sqlite FTS5 probe green this session.
 
+## 0021 — IDE extension client — DECIDED: MCP stdio server + VS Code extension, direct SQLite open
+
+Client surface — one agent path, one human path, shared ops:
+
+| Option | Score notes | Verdict |
+|---|---|---|
+| MCP stdio server (@modelcontextprotocol/sdk 1.x, MIT): tools for projects/search/tasks/memory/impact | Vision 5 (every IDE agent — Copilot, Cursor, Claude Code — from one server), TS-fit 5, effort 4, robustness 4 (stdio = child process, no ports/auth) | CHOSEN — agent path |
+| VS Code extension (official Extension API, TS): commands + settings | Maturity 5 (tens of thousands of extensions; works in VS Code + forks incl. Cursor), TS-fit 5, effort 4 | CHOSEN — human path |
+| Zed extension | WASM/Rust seam, catalog ~200, narrow API (secondary sources agree) | Rejected — reach + stack mismatch |
+| JetBrains plugin | Kotlin/JVM second-language seam, effort 1–2 | Rejected — stack mismatch |
+| LSP server | Serves language features; Tivity has none | Rejected — wrong fit |
+| Neovim plugin | Lua seam, smaller audience | Rejected — stack + reach |
+
+Data path — clients open the desktop's database file directly:
+
+| Option | Score notes | Verdict |
+|---|---|---|
+| Direct open of tivity.db via node:sqlite; WAL + busy_timeout posture already shared | Local-first 5, effort 4, robustness 4 (SQLite concurrent readers/writers, zero new deps on Node 24) | CHOSEN |
+| Local HTTP sidecar between clients and DB | New ports/auth/lifecycle for no benefit at this scale | Rejected |
+| better-sqlite3 / vscode-node-sqlite3 native modules | Native-build friction (0020 precedent); Electron-ABI prebuilds for extensions | Rejected |
+| MCP SDK v2 line (@modelcontextprotocol/server 2.x) | Implements 2026-07-28 spec, but 1.x is latest stable (1.30–1.32) | Rejected for v0 — migrate later |
+
+Path resolution: TIVITY_DB_PATH env → `tivity.dbPath` setting → platform
+default under the Tauri app-data dir for `com.tivity.app`
+(macOS `~/Library/Application Support/…`, Linux `~/.local/share/…`,
+Windows `%APPDATA%/…`). migrate() on open (idempotent); ensureSeeded only
+when empty — the same contract as the desktop, so whichever surface runs
+first owns the seed. node:sqlite is builtin on Node 24 and Electron 35+
+(Node 22.9+); older/remote hosts (e.g. Cursor remote on Node 20) get a
+clear error naming the blocker, not a silent failure.
+
+v0 surface (7 tools, 5 commands): projects, search, tasks, create-task,
+set-task-status, record-memory, impact. Writes are explicit user/agent
+actions only — the 0019 note-only spirit holds (no auto-mutation).
+Committed tests stay hermetic: ops against a fake Store, node:sqlite
+adapter against temp files, MCP protocol via the SDK's in-memory
+transport; packaging (.vsix) and Marketplace/OpenVSX publish are
+documented user-side steps, like the 0018 App path.
+Evidence: MCP TS SDK README (MIT, McpServer/registerTool/
+StdioServerTransport, zod peer) + npm 1.x stable line; Electron
+35+/Node 22.9+ node:sqlite builtin reports; Cursor remote Node 20
+caveat; Zed catalog/extension-API maturity reports (secondary).
+
 ## Roadmap (from workflow synthesis, surface-adjusted)
 
 - M0 scaffold + core tables + links + impact check (S0+S1 slice) — SHIPPED and verified
@@ -326,6 +369,7 @@ Evidence: node:sqlite FTS5 probe green this session.
 - M4a local audited agent runtime: jobs ledger + runs + rule handlers (S7 slice) — SHIPPED and verified
 - M4b LLM handlers: agent-task job, Ollama-local default, native+fetch paths (S7) — SHIPPED and verified
 - M5a FTS5 search over docs/memory/tasks (S8 slice) — SHIPPED and verified
+- M5b IDE extension client: MCP stdio server + VS Code extension (S8) — SHIPPED and verified
 - M4 agent runtime on Mastra + AWR substrate, audited runs (S7)
 - M5 hardening, FTS5/vector search, IDE extension client
 - (Original P5-Tauri-shell milestone folds into M0 per decision 0001 override)

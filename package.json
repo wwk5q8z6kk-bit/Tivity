@@ -9,7 +9,7 @@
     "build": "pnpm --filter @tivity/desktop build",
     "preview": "pnpm --filter @tivity/desktop preview",
     "typecheck": "pnpm -r typecheck",
-    "test": "pnpm --filter @tivity/core --filter @tivity/github-sync --filter @tivity/agent-runtime test",
+    "test": "pnpm --filter @tivity/core --filter @tivity/github-sync --filter @tivity/agent-runtime --filter @tivity/ide-client --filter ./apps/vscode-tivity test",
     "tauri": "pnpm --filter @tivity/desktop tauri",
     "tauri:dev": "pnpm --filter @tivity/desktop tauri:dev",
     "tauri:build": "pnpm --filter @tivity/desktop tauri:build"

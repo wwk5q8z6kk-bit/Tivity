@@ -1,0 +1,64 @@
+{
+  "name": "tivity",
+  "displayName": "Tivity",
+  "description": "Tivity Project OS inside your IDE: search, tasks, memory, impact queue",
+  "publisher": "tivity",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:tivity.search",
+    "onCommand:tivity.listTasks",
+    "onCommand:tivity.createTask",
+    "onCommand:tivity.recordMemory",
+    "onCommand:tivity.showImpact"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      { "command": "tivity.search", "title": "Tivity: Search docs, memory and tasks" },
+      { "command": "tivity.listTasks", "title": "Tivity: List tasks" },
+      { "command": "tivity.createTask", "title": "Tivity: Create task" },
+      { "command": "tivity.recordMemory", "title": "Tivity: Record memory" },
+      { "command": "tivity.showImpact", "title": "Tivity: Show impact queue" }
+    ],
+    "configuration": {
+      "title": "Tivity",
+      "properties": {
+        "tivity.dbPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to tivity.db. Empty resolves to the desktop app's database (TIVITY_DB_PATH wins when set)."
+        },
+        "tivity.project": {
+          "type": "string",
+          "default": "",
+          "description": "Project id or name. Empty uses the first project."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "esbuild src/extension.ts --bundle --platform=node --format=cjs --external:vscode --outfile=out/extension.js",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "vscode:prepublish": "pnpm compile"
+  },
+  "dependencies": {
+    "@tivity/core": "workspace:*",
+    "@tivity/ide-client": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@types/vscode": "^1.90.0",
+    "esbuild": "^0.25.0",
+    "typescript": "~5.8",
+    "vitest": "^3"
+  }
+}
