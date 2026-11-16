@@ -307,7 +307,7 @@ watch the Agents tab result line.
 | LIKE fallback when FTS is unavailable (migrate + query both guarded) | Degradation 5 — search never breaks the app, only loses ranking | CHOSEN as fallback, not primary |
 | Committed SQL tests on node:sqlite (zero new deps, FTS5 verified present) running the real MIGRATIONS strings + shared query builders | Proof 5 — tests the actual SQL, not a model of it | CHOSEN over better-sqlite3 (native-build friction under pnpm ignored-scripts) |
 | Single unified FTS index | Saves 2 tables, complicates triggers + kind attribution | Rejected — per-source keeps triggers trivial |
-| Results display-only in v0 | Effort 5; tabs have no entity deep-link routing yet | CHOSEN — navigation deferred, labeled in UI |
+| Results display-only in v0 | Effort 5; tabs have no entity deep-link routing yet | Superseded by 0022 — navigation shipped once a hit could name its tab |
 
 Decisive factors: ranked search with zero new dependencies + the safety net (LIKE)
 means FTS absence anywhere (older SQLite, odd drivers) degrades quality, never
@@ -357,6 +357,231 @@ StdioServerTransport, zod peer) + npm 1.x stable line; Electron
 35+/Node 22.9+ node:sqlite builtin reports; Cursor remote Node 20
 caveat; Zed catalog/extension-API maturity reports (secondary).
 
+## 0022 — Search navigation — DECIDED: a hit opens its tab and highlights the row
+
+| Option | Score notes | Verdict |
+|---|---|---|
+| `destinationForSearchKind` maps doc/memory/task onto Docs, Memory, Tasks; the row shares `searchHitElementId` and gets a focus outline | Vision 5 (find then act), effort 5, robustness 4 (closed union, no router) | CHOSEN |
+| Stay display-only | Vision 2 — the user still hunts the tab by hand | Rejected — the deferral in 0020 was only until a tab could be named |
+| Client-side URL router | Effort 2 — new dependency for three destinations and no other routes | Rejected |
+
+Decisive factors: the searchable kinds already have tabs, and one pure map keeps the shell from inventing a second naming scheme.
+A missing row (deleted after the search) still switches tabs and highlights nothing.
+Evidence: `destinationForSearchKind` contract test; browser pass on the seeded project.
+
+## 0023 — Shell — DECIDED: ledger masthead, grouped contents, finder on the page
+
+| Option | Score notes | Verdict |
+|---|---|---|
+| Editorial ledger: ink/paper/copper, Fraunces masthead, contents grouped Plan / Record / Ship / Run, finder stays in the masthead | Vision 5 (the link is the product, so navigation is a contents page), effort 4 | CHOSEN |
+| Restyle the existing 13 equal pills | Vision 2 — paint on the same hunt | Rejected |
+| Add a client router and one route per tab | Effort 2 — new dependency, no shareable URLs required yet | Rejected |
+
+Decisive factors: the user asked for a redesign, and the searchable kinds already jump to a tab (0022), so the finder can sit above the work instead of inside one tab.
+The Find page stays, and both finders write the same result list.
+Evidence: browser pass on wide and narrow widths.
+
+## 0024 — Connectors — DECIDED: MCP catalog, permissive neighbors only, no vendoring
+
+| Option | Score notes | Verdict |
+|---|---|---|
+| Catalog in the shell: built-in MCP/GitHub/Ollama/VS Code, attach Apache/MIT neighbors, hold checkouts with no LICENSE | Vision 5 (the record is useful when other agents can reach it), license 5, local-first 5 | CHOSEN |
+| Vendor Buzz, AgentKit, Hydra, and AWR into this repo | Effort 1, local-first 1 — Rust relay, Python workers, and a Postgres runtime do not belong in the desktop bundle | Rejected |
+| Pretend a marketplace install button cloned them | Robustness 1 — a button that cannot run those processes would be a fake connection | Rejected |
+
+Decisive factors: Tivity is already an MCP server with seven tools. Interop is a client config plus a license gate, not a pile of imported repositories.
+Buzz (Apache-2.0) and AgentKit (MIT) are attachable. agent-os, Hydra Brain, and the workflow runtime stay held because those checkouts have no LICENSE file. The official MCP reference servers are MIT plus Apache-2.0.
+Evidence: `connectors.test.ts`.
+
+## 0025 — Daily screen — DECIDED: list first, board as a view, visible save
+
+| Option | Score notes | Verdict |
+|---|---|---|
+| List by default, board when two or more tasks exist, inspector and command menu later | Learnability 5, speed at 50 tasks 5, effort 3, keeps the ledger 4. Total 17 | CHOSEN |
+| Token polish only: contrast, 44px targets, shorter title, same five sections | Effort 5, speed at 50 tasks 2. Total 15 | Partial, shipped as the same slice's chrome |
+| Freeform spatial canvas | Learnability 2, effort 1. Total 8 | Rejected |
+
+Decisive factors: one task in three columns leaves the work quieter than the project title. Hick's law on fourteen peer pages and Fitts's law on 32px targets are the measured friction. WCAG 2.2 SC 1.4.11 fails at about 1.5:1 for `--rule` on `--ink`. The object shell (inspector, command menu) is the next slice, not this one.
+Evidence: browser pass on the list, the Saving label, and the board gate.
+
+## 0026 — Command field — DECIDED: one field runs go, create, status, and open
+
+| Option | Score notes | Verdict |
+|---|---|---|
+| The project field becomes a command list. The selected task keeps an inspector for its links and its doc | Speed 5, the proof path stays on Tasks, effort 3 | CHOSEN |
+| Leave ⌘K as search-only and add the inspector later | Speed 2 — status and the doc stay on other pages | Rejected |
+| Merge Docs, Decisions, Evidence, and Memory into Library and Activity in the same change | Effort 2 — a navigation rewrite on top of an unproved inspector | Rejected |
+
+Decisive factors: the seeded task already links to Project notes. The command list puts Set to Doing and Open Project notes ahead of creating a task from that phrase, so Enter does the matching command.
+Evidence: `palette.test.ts` and a browser pass on the welcome project.
+
+## 0027 — Library and Activity — DECIDED: two pages over the existing records
+
+| Option | Score notes | Verdict |
+|---|---|---|
+| Library switches between docs and decisions. Activity switches between evidence, memory, and runs. Search opens those pages | Learnability 5, effort 4, no schema migration | CHOSEN |
+| Store a new unified note type and migrate docs and decisions into it | Effort 2, risk to links and search indexes | Rejected |
+| Keep Docs, Decisions, Evidence, and Memory as peer pages | Speed 2 — four equal forms for two jobs | Rejected |
+
+Decisive factors: the records already exist and are linked. The friction was choosing among four pages, not the shape of a row.
+Evidence: destination test and a browser pass on the welcome project.
+
+## 0028 — Lists first — DECIDED: New opens the composer, Ship is one page
+
+| Option | Score notes | Verdict |
+|---|---|---|
+| A New button reveals the composer on Plan, Library, and Activity. Ship uses one switch. Find leaves the section list because the command field searches | The list is what the page is for, effort 4 | CHOSEN |
+| Leave a form open at the top of every page | Speed 2 — the empty field outranks the one real row | Rejected |
+| Delete the Ship records and keep only tasks | Vision 1 — sprints, screens, and gates are already stored | Rejected |
+
+Decisive factors: the audit called the always-open form the thing that wins attention over the work. Search already runs from the command field.
+Evidence: browser pass on Tasks, Ship, and Copy config.
+
+## 0029 — Light theme and Ship lists — DECIDED: same tokens, records before the add form
+
+| Option | Score notes | Verdict |
+|---|---|---|
+| A light palette on the same token names, plus a toggle that remembers the choice. Delivery and Design show the stored rows, with add forms inside a closed disclosure | Daily use 5, effort 3 — one stylesheet, both themes | CHOSEN |
+| A second visual theme with new type and new color names | Effort 1 — the last pass already set the type | Rejected |
+| Leave every Ship form open above the list | The list stays below the empty fields | Rejected |
+
+Decisive factors: dark-only and always-open Ship forms were the remaining practical gaps after lists-first.
+Evidence: browser pass — Light clears text, muted, and border contrast; Keys lists the shortcuts; Delivery shows Sprint 1 with the add form closed.
+
+## 0030 — Working surface — DECIDED: Ask is the primary control, the page is flat
+
+| Option | Score notes | Verdict |
+|---|---|---|
+| A flat background, sans for the work, and an Ask bar whose context is the selected task. Quality adds fold away. Agents lead with the ask | Human use 5 — one place to tell a person or an agent what to do, effort 3 | CHOSEN |
+| A new palette and a new display face | Look 2 — the last passes already set the tokens | Rejected |
+| A chat transcript with no model call | Trust 1 — a fake reply would look like an agent ran | Rejected |
+
+Decisive factors: the grain and the display title won attention over the task. The agent path lived on a later page, behind a registration form.
+Evidence: browser pass — the page background is flat, Ask is the full-width field, Ask about this opens status and the linked doc, Quality add forms are closed, and Agents leads with Ask agent. A 390px width does not scroll sideways.
+
+## 0031 — Persistent assistant — DECIDED: left rail, one work tab row
+
+| Option | Score notes | Verdict |
+|---|---|---|
+| A sticky left assistant with Ask, the selected task, and a log of real actions. One tab row for the work | Daily use 5 — the assistant stays while the page changes, effort 3 | CHOSEN |
+| Keep the project list on the left and the two tab rows | The assistant was a field you scrolled away from | Rejected |
+| A chat pane that invents replies | Trust 1 — a line in the log has to be something that ran | Rejected |
+
+Decisive factors: the left column was project navigation, and the work area asked for a section and then a page.
+Evidence: browser pass — the assistant is a sticky 300px column on the left, the work area is one tab row, Ship keeps the assistant and its log, and Start writes “Moved … to Doing” before the sample task is reopened.
+
+## 0032 — Build path — DECIDED: the left column shows the engineering stages
+
+| Option | Score notes | Verdict |
+|---|---|---|
+| A stage list on the left, counted from stored requirements, tasks, design, pull requests, tests, releases, and agents. The first open stage is Next and opens that page | Daily use 5 — a person can see the whole build, effort 3 | CHOSEN |
+| Leave Ask and the empty log as the whole left column | The column does not show a development path | Rejected |
+| A generated plan that is not tied to stored records | Trust 1 — an empty test list has to mean there are no tests | Rejected |
+
+Decisive factors: the product already stores the full-stack records. The left column was not showing them.
+Evidence: browser pass — Welcome to Tivity shows 1 requirement, Tasks as Next with 1 to do, 1 screen and 1 component, an active sprint with no pull request, no tests, and no release. Choosing Quality opens that Ship view and leaves the path on the left.
+
+## 0033 — Next opens the gap — DECIDED: the next action lands on the missing work
+
+| Option | Score notes | Verdict |
+|---|---|---|
+| A button for the first open stage. Tasks selects the open task. An empty sprint, pull request, screen, test, release, or agent opens that add form | Daily use 5 — the path leads into the work, effort 3 | CHOSEN |
+| Leave Next as a tab change with the form closed | The person still has to find the disclosure | Rejected |
+| Create the missing records automatically | Trust 1 — a pull request or a test has to be written by a person | Rejected |
+
+Decisive factors: the path already knew which stage was empty. Opening the page did not open the work.
+Evidence: browser pass — Open the open task selects the seeded task and its notes. Quality opens Ship and focuses the new-test field. The task stays To do.
+
+## 0034 — Every page — DECIDED: each tab states its job and its count
+
+| Option | Score notes | Verdict |
+|---|---|---|
+| A count on every work tab, one line of purpose, and an empty line when a list has no records. Links shows the queue and the stored links before the add form | Daily use 5 — the same shape on every page, effort 3 | CHOSEN |
+| Leave each page with its own empty wording and a form at the top of Links | The tabs do not tell you what is in them | Rejected |
+| Hide a tab until it has records | A missing quality page would hide the gap | Rejected |
+
+Decisive factors: the build path already named the stages. The pages themselves still differed in what they showed first.
+Evidence: browser pass — every work tab shows a count. Requirements opens Offline-first launch. Library shows Project notes. Activity shows the research note. Links lists six connections with Add a link closed. Ship names the empty milestone, pull request, release, and ref lists.
+
+## 0035 — One map — DECIDED: the left rail is the navigation
+
+| Option | Score notes | Verdict |
+|---|---|---|
+| Remove the work tab row. The build path stays the engineering map. Library, Activity, Links, and Connectors sit under Record on the same rail. The ship switch uses Build for the delivery page | Daily use 5 — one set of names, effort 2 | CHOSEN |
+| Keep both the path and the eight tabs | The two maps disagree, and Ship hides the stages | Rejected |
+| Drop Library, Activity, Links, and Connectors | Those records are already stored and used | Rejected |
+
+Decisive factors: a person cannot follow a build that is described twice with different words.
+Evidence: browser pass — the work header has no tab row. Library in Record opens Project notes. Quality on the path opens the test form and the page title reads Quality. The ship switch reads Build and shows Sprint 1. At 390px the rail stacks and the page does not overflow.
+
+## 0036 — The stage is the page — DECIDED: split Release and close the leftover forms
+
+| Option | Score notes | Verdict |
+|---|---|---|
+| Release gets its own page. Sync moves under Record and the ship switch goes away. Ask lists the same places as the rail. The next-version form and the GitHub form start closed. A status change tints the row for 160ms unless motion is reduced | Daily use 5 — the page matches the stage you clicked, effort 2 | CHOSEN |
+| Leave Release on the sprint page and keep the four-way ship switch | The rail and the page still disagree | Rejected |
+| Auto-create a pull request, a test, and a release so every stage looks finished | The welcome project would no longer show the real gap | Rejected |
+
+Decisive factors: clicking Release has to show releases, and Ask has to name the same places as the rail.
+Evidence: browser pass — Release shows milestones and releases, and Add a release is the open form. Sync is under Record, with Attach a ref and Connect a repository closed. Ask Design opens the design page and lists Home. Start tints the row, and the task is back to To do. Save v2 stays closed. Build shows Sprint 1. At 390px the page does not overflow. Core tests 26 passed. Desktop typecheck passed.
+
+## 0037 — Work first — DECIDED: command, then path, then the page
+
+| Option | Score notes | Verdict |
+|---|---|---|
+| Put Ask under the project. State how many stages are recorded. On a narrow screen, start Build and Record closed. Give every field in a multi-field form a visible label, and clear Ask after it runs | Daily use 5 — the next action and the page are reachable, effort 2 | CHOSEN |
+| Leave Ask at the bottom of the rail and keep placeholder-only fields | The command and the field names are easy to lose | Rejected |
+| Collapse the path on desktop too | The path is the map, and a wide screen has room for it | Rejected |
+
+Decisive factors: a person should reach the command and the page without scrolling past the whole map, and a field should keep its name while it is being filled.
+Evidence: browser pass — Ask sits above the build path. The header reads 3 of 7 stages recorded. Build opens the pull-request form with Title and Branch labeled. Asking for Design opens that page and clears the field. At 390px Build and Record start closed, and the page does not overflow.
+
+## 0038 — Readable work — DECIDED: rows, page action, and a sticky inspector
+
+| Option | Score notes | Verdict |
+|---|---|---|
+| Make stored lists into scannable rows. Style add disclosures as actions. When the open page is the next stage, put that action on the page. Empty lists use a quiet empty panel. Keep the task inspector sticky while the list scrolls | Daily use 5 — the page is readable and the next step is on it, effort 2 | CHOSEN |
+| Leave dense text lists and keep the next action only on the rail | A person on the page still has to look left to know what to do | Rejected |
+| Redesign the color theme again | The structure and density are the problem, not the palette | Rejected |
+
+Decisive factors: a full-stack pass has to be readable at a glance, and the next gap has to be reachable from the page you are already on.
+Evidence: browser pass — Tasks shows Open the open task on the page and selects the seeded task. Status pill uses todo. Quality shows the empty panel for tests and a bordered Add a test control. Build shows No pull requests yet in the empty panel and a 48px list row for Sprint 1. The inspector is sticky. The mast has a bottom rule. Desktop typecheck passed.
+
+## 0039 — One add pattern — DECIDED: every create form is a disclosure
+
+| Option | Score notes | Verdict |
+|---|---|---|
+| Replace the New button composers with the same disclosure pattern as Ship. N opens the add form for the current page, including ship stages, agents, links, and sync | Daily use 5 — one way to add, effort 2 | CHOSEN |
+| Keep the New button on Plan and Library pages | Two add patterns force people to relearn each page | Rejected |
+| Auto-open every add form | The page fills with empty forms again | Rejected |
+
+Decisive factors: a person should press N anywhere and get the same kind of add control.
+Evidence: browser pass — Tasks shows Add a task closed. N on Library opens Add a doc and focuses Doc title. Quality opens Add a test. Requirements shows Add a requirement. The welcome task stays To do. Desktop typecheck passed.
+
+## 0040 — Attach stack — DECIDED: copyable MCP configs + sqlite-vec blend spike
+
+| Option | Score notes | Verdict |
+|---|---|---|
+| Keep neighbors outside the bundle. Ship copyable MCP/AgentKit attach configs for Buzz, AgentKit, and the official reference servers. Catalogue sqlite-vec (MIT/Apache) and land a pure rank-blend helper with tests; load the native extension in a later opener spike | Vision 5, license 5, local-first 5, effort 3 | CHOSEN |
+| Vendor Buzz, AgentKit, and MCP servers into apps/desktop | Rejected by 0024 — wrong runtimes inside the shell | Rejected |
+| Attach agent-os, Hydra, and AWR now | No LICENSE in those checkouts | Rejected |
+| Require sqlite-vec in CI before the blend lands | Native loaders differ per platform; blocks the spike | Rejected |
+
+Decisive factors: excellence comes from attachable permissive neighbors and a local vector path, without infecting the desktop bundle or ignoring the license gate.
+Evidence: core tests 30 passed (connectors + vector blend). Desktop typecheck passed. Browser Connectors shows 12 entries, Copy config on Tivity MCP, Full MCP attach bundle, Buzz, AgentKit, MCP reference servers, and sqlite-vec. Held rows stay unspecified.
+
+## 0041 — Vector opener on Node — DECIDED: optional sqlite-vec in the IDE/MCP path
+
+| Option | Score notes | Verdict |
+|---|---|---|
+| Add an optional vector provider on TauriStore that blends with FTS. Load sqlite-vec in the Node IDE/MCP opener when present, with a local bag-of-words embedding. Skip quietly when the extension cannot load. Leave browser and Tauri FTS-only for now | Local-first 5, license 5 (MIT/Apache), effort 3 | CHOSEN |
+| Block search until sqlite-vec loads everywhere | Breaks browser and Tauri today | Rejected |
+| Pull Mem0 / hosted embeddings into the desktop | New vendor surface; against no-vendor memory path | Rejected |
+| Require a cloud embedding API for the spike | Not local-first | Rejected |
+
+Decisive factors: prove the blend on the path that can load extensions, without breaking surfaces that cannot.
+Evidence: pending unit pass.
+
 ## Roadmap (from workflow synthesis, surface-adjusted)
 
 - M0 scaffold + core tables + links + impact check (S0+S1 slice) — SHIPPED and verified
@@ -370,6 +595,7 @@ caveat; Zed catalog/extension-API maturity reports (secondary).
 - M4b LLM handlers: agent-task job, Ollama-local default, native+fetch paths (S7) — SHIPPED and verified
 - M5a FTS5 search over docs/memory/tasks (S8 slice) — SHIPPED and verified
 - M5b IDE extension client: MCP stdio server + VS Code extension (S8) — SHIPPED and verified
+- M5c search hit opens the owning tab and highlights the entity — SHIPPED and verified
 - M4 agent runtime on Mastra + AWR substrate, audited runs (S7)
 - M5 hardening, FTS5/vector search, IDE extension client
 - (Original P5-Tauri-shell milestone folds into M0 per decision 0001 override)

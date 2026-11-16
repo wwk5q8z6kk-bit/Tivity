@@ -10,6 +10,25 @@ export interface SearchHit {
   snippet: string;
 }
 
+/** Tab the shell opens when a search hit is chosen. */
+export type SearchDestination = 'library' | 'activity' | 'tasks';
+
+export function destinationForSearchKind(kind: SearchKind): SearchDestination {
+  switch (kind) {
+    case 'doc':
+      return 'library';
+    case 'memory':
+      return 'activity';
+    case 'task':
+      return 'tasks';
+  }
+}
+
+/** DOM id shared by a hit and the row it opens. */
+export function searchHitElementId(hit: { kind: SearchKind; id: string }): string {
+  return `entity-${hit.kind}-${hit.id}`;
+}
+
 // "quarterly report" -> '"quarterly" "report"': AND of phrases, immune to
 // MATCH metacharacters (quotes inside a term are doubled per FTS5 rules).
 export function toMatchQuery(input: string): string {

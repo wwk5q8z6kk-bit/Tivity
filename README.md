@@ -2,7 +2,7 @@
 
 One workspace. One source of truth. Every project. Every stage. Every agent.
 
-Status: M0–M5b shipped and verified (two-way GitHub sync, LLM agents, FTS5 search, IDE clients). Build target is a launchable app —
+Status: M0–M5c shipped and verified (two-way GitHub sync, LLM agents, FTS5 search with hit navigation, IDE clients). Build target is a launchable app —
 task owner chose "whatever is best, most efficient, robust, and AI-native."
 
 Decisions so far:

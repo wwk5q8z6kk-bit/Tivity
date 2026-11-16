@@ -6,6 +6,8 @@ import {
   DOCS_LIKE_SQL,
   MEMORY_FTS_SQL,
   TASKS_FTS_SQL,
+  destinationForSearchKind,
+  searchHitElementId,
   toHits,
   toLikePattern,
   toMatchQuery,
@@ -49,6 +51,15 @@ function openMigrated(): DatabaseSync {
     ('t1', 'p1', 'Write quarterly summary', 'todo', 5, 5)`);
   return db;
 }
+
+describe('search hit destinations', () => {
+  it('maps each searchable kind onto the tab that owns it', () => {
+    expect(destinationForSearchKind('doc')).toBe('library');
+    expect(destinationForSearchKind('memory')).toBe('activity');
+    expect(destinationForSearchKind('task')).toBe('tasks');
+    expect(searchHitElementId({ kind: 'task', id: 't1' })).toBe('entity-task-t1');
+  });
+});
 
 describe.runIf(ftsSupported())('FTS search SQL (real migrations)', () => {
   it('finds docs, memory and tasks scoped to the project', () => {
