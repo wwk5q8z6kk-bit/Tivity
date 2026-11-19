@@ -316,16 +316,20 @@ impl SqliteNodeStore {
         conn.execute_batch(MIGRATIONS[0].1)
             .map_err(|e| MvError::Migration(format!("migration 001 failed: {e}")))?;
 
-        let max_version: i64 = conn
+        let (max_version, has_admission_entry): (i64, bool) = conn
             .query_row(
-                "SELECT COALESCE(MAX(version), 0) FROM schema_version",
+                "SELECT COALESCE(MAX(version), 0), COUNT(CASE WHEN version = 39 THEN 1 END) > 0
+                 FROM schema_version",
                 [],
-                |row| row.get(0),
+                |row| Ok((row.get(0)?, row.get(1)?)),
             )
-            .unwrap_or(0);
+            .map_err(|e| MvError::Migration(format!("reading schema versions failed: {e}")))?;
 
         for &(version, sql) in &MIGRATIONS[1..] {
-            if version <= max_version {
+            // Some legacy vaults installed the admission table without recording
+            // version 039. Its idempotent SQL preserves existing decisions.
+            let repair_admission_ledger = version == 39 && !has_admission_entry;
+            if version <= max_version && !repair_admission_ledger {
                 continue;
             }
             conn.execute_batch(sql)
