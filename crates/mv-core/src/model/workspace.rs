@@ -418,7 +418,6 @@ impl WorkspaceEvent {
     }
 }
 
-
 pub const WORKSPACE_CONFLICT_PAYLOAD_SCHEMA_V1: &str = "mindvault.workspace-conflict/v1";
 
 /// Documented Stage-1 conflict resolution choices
@@ -528,7 +527,6 @@ impl WorkspaceConflict {
         })
     }
 }
-
 
 #[cfg(test)]
 mod tests {

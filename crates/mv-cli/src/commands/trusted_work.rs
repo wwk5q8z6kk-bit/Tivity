@@ -15,8 +15,7 @@ pub async fn demo(config_path: &str) -> Result<()> {
 
     let local_node_id = engine.local_context_node_id().await?;
     let actor = StableUri::principal(local_node_id, Uuid::new_v5(&local_node_id, b"cli-demo"));
-    let target =
-        StableUri::parse("mindvault://schemas/executable").map_err(|e| anyhow!(e))?;
+    let target = StableUri::parse("mindvault://schemas/executable").map_err(|e| anyhow!(e))?;
 
     engine
         .issue_authority_grant(IssueAuthorityGrantRequest {

@@ -109,7 +109,12 @@ impl HttpOutboxPublisher {
         Ok(Some(publisher))
     }
 
-    fn map_status(&self, status: reqwest::StatusCode, body: &str, event_id: Uuid) -> OutboxDeliveryResult {
+    fn map_status(
+        &self,
+        status: reqwest::StatusCode,
+        body: &str,
+        event_id: Uuid,
+    ) -> OutboxDeliveryResult {
         let code = status.as_u16();
         let summary = truncate_error_summary(if body.trim().is_empty() {
             status.canonical_reason().unwrap_or("http response")
@@ -166,7 +171,6 @@ impl OutboxPublisher for HttpOutboxPublisher {
         Ok(self.map_status(status, &body, claim.event.id))
     }
 }
-
 
 /// Runtime knobs for one dispatcher loop.
 #[derive(Debug, Clone)]
@@ -725,7 +729,10 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(receipts.len(), 1);
-        let delivery = receipts[0].delivery_reference.as_deref().expect("delivery ref");
+        let delivery = receipts[0]
+            .delivery_reference
+            .as_deref()
+            .expect("delivery ref");
         assert!(
             delivery.starts_with("http:200:"),
             "unexpected delivery_reference: {delivery}"

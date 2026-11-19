@@ -26,6 +26,9 @@ export default defineConfig({
 		reuseExistingServer: !process.env.CI
 	},
 	// Specs use relative paths so the host is defined in exactly one place.
-	use: { baseURL: `http://${HOST}:${PORT}` },
+	use: {
+		baseURL: `http://${HOST}:${PORT}`,
+		launchOptions: { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH }
+	},
 	testDir: 'e2e'
 });

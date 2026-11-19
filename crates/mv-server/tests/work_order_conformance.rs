@@ -532,7 +532,11 @@ fn item_10_conformance_coverage_is_declared() {
 
     let core = std::fs::read_to_string(manifest.join("../mv-core/src/model/work_order.rs"))
         .expect("mv-core work_order model");
-    assert_eq!(count_test_attrs(&core), 12, "mv-core work_order model tests");
+    assert_eq!(
+        count_test_attrs(&core),
+        12,
+        "mv-core work_order model tests"
+    );
 
     let storage = std::fs::read_to_string(manifest.join("../mv-storage/src/sqlite.rs"))
         .expect("mv-storage sqlite");
@@ -557,9 +561,16 @@ fn item_10_conformance_coverage_is_declared() {
     }
     assert_eq!(storage_work_order_tests.len(), 11);
 
-    let engine = std::fs::read_to_string(manifest.join("../mv-engine/src/engine/work_order_ops.rs"))
-        .expect("mv-engine work_order_ops");
-    assert_eq!(count_test_attrs(&engine), 20, "mv-engine work_order_ops tests");
+    let engine =
+        std::fs::read_to_string(manifest.join("../mv-engine/src/engine/work_order_ops.rs"))
+            .expect("mv-engine work_order_ops");
+    assert_eq!(
+        count_test_attrs(&engine),
+        21,
+        "mv-engine work_order_ops tests"
+    );
+
+    assert!(engine.contains("fn work_order_admit_embeds_action_envelope_v2_in_event"));
 
     let api = std::fs::read_to_string(manifest.join("tests/api_integration.rs"))
         .expect("api_integration");
@@ -683,12 +694,7 @@ async fn wedge_value_proof_trusted_work_completes_over_http() {
     let mut rule = mv_core::AutonomyRule::global(0.0);
     rule.allowed_intent_types = vec!["work_order.run.engine".into()];
     rule.max_actions_per_hour = 100;
-    engine
-        .store
-        .nodes
-        .add_autonomy_rule(&rule)
-        .await
-        .unwrap();
+    engine.store.nodes.add_autonomy_rule(&rule).await.unwrap();
 
     let created = router
         .clone()

@@ -2,14 +2,14 @@ mod access_ops;
 mod agent_run_executor;
 mod consumer_ops;
 mod graph_ops;
+mod inbox_consumer;
 mod intent_ops;
 mod interoperability_ops;
 mod mcp_ops;
 mod node_ops;
 mod outbox_dispatch;
-mod inbox_consumer;
-mod projection_recovery;
 mod profile_ops;
+mod projection_recovery;
 mod proposal_ops;
 mod relay_ops;
 mod search_ops;
@@ -20,6 +20,11 @@ mod work_order_ops;
 mod workspace_ops;
 mod workspace_projection_ops;
 
+pub use agent_run_executor::ExecutedRun;
+pub use inbox_consumer::{
+    spawn_inbox_consumer, InboxConsumeTick, InboxConsumerConfig, InboxDomainHandler,
+    LocalIndexHandler,
+};
 pub use interoperability_ops::{
     AuthorityGrantIssuance, AuthorityGrantTransition, IssueAuthorityGrantRequest,
     LocalContextNodeRegistration,
@@ -28,12 +33,7 @@ pub use outbox_dispatch::{
     spawn_outbox_dispatcher, HttpOutboxPublisher, LocalAckPublisher, OutboxDispatchTick,
     OutboxDispatcherConfig, OutboxPublisher,
 };
-pub use inbox_consumer::{
-    spawn_inbox_consumer, InboxConsumeTick, InboxConsumerConfig, InboxDomainHandler,
-    LocalIndexHandler,
-};
 pub use projection_recovery::ProjectionReconcileTick;
-pub use agent_run_executor::ExecutedRun;
 pub use work_order_ops::{
     AdmissionRefusal, ProposedEdge, ProposedNode, ProposedWorkOrder, RunReadiness,
 };

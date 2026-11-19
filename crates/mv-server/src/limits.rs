@@ -183,10 +183,10 @@ static AI_RATE_LIMITER: OnceLock<RequestRateLimiter> = OnceLock::new();
 
 /// Per-subject throttle for expensive AI endpoints (chat + assist).
 ///
-/// Local system admin (auth disabled / no subject) is exempt; the global
+/// The local system admin in auth-disabled mode is exempt; the global
 /// request rate limiter still applies via middleware.
 pub fn enforce_ai_rate_limit(auth: &AuthContext) -> Result<RateLimitStatus, RateLimitExceeded> {
-    if auth.subject.is_none() && auth.is_admin() {
+    if auth.is_uncredentialed_system_admin() {
         return Ok(RateLimitStatus {
             limit: 0,
             remaining: 0,

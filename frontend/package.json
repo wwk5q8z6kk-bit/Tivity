@@ -5,8 +5,8 @@
 	"version": "0.0.1",
 	"type": "module",
 	"scripts": {
-		"dev": "vite dev",
-		"build": "vite build",
+		"dev": "pnpm build:delivery && vite dev",
+		"build": "pnpm build:delivery && vite build",
 		"preview": "vite preview",
 		"tauri": "tauri",
 		"tauri:dev": "tauri dev",
@@ -18,7 +18,8 @@
 		"format": "prettier --write .",
 		"test:unit": "vitest",
 		"test": "npm run test:unit -- --run && npm run test:e2e",
-		"test:e2e": "playwright test"
+		"test:e2e": "playwright test",
+		"build:delivery": "pnpm --dir ../delivery --filter @tivity/desktop exec vite build --base ./ --outDir ../../../frontend/static/delivery-ui --emptyOutDir"
 	},
 	"devDependencies": {
 		"@eslint/compat": "^2.0.1",
@@ -53,8 +54,8 @@
 	"dependencies": {
 		"@lucide/svelte": "^1.27.0",
 		"@tanstack/svelte-virtual": "^3.13.18",
-		"@tauri-apps/api": "^2.11.1",
-		"@tauri-apps/plugin-dialog": "^2.7.2",
+		"@tauri-apps/api": "2.10.1",
+		"@tauri-apps/plugin-dialog": "2.7.0",
 		"@tiptap/core": "3.19.0",
 		"@tiptap/extension-image": "3.19.0",
 		"@tiptap/extension-link": "3.19.0",
@@ -68,6 +69,7 @@
 		"@tiptap/markdown": "3.19.0",
 		"@tiptap/starter-kit": "3.19.0",
 		"@tiptap/suggestion": "3.19.0",
+		"csv-parse": "^6.2.1",
 		"dexie": "^4.3.0",
 		"fuzzysort": "^3.1.0",
 		"highlight.js": "^11.11.1",

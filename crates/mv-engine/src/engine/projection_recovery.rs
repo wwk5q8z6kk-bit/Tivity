@@ -62,8 +62,7 @@ impl MindVaultEngine {
             match self.ingest.index_and_enrich(&node).await {
                 Ok(()) => {
                     self.auto_link_node_to_daily_note_best_effort(&node).await;
-                    self.auto_backlink_node_references_best_effort(&node)
-                        .await;
+                    self.auto_backlink_node_references_best_effort(&node).await;
                     self.store
                         .nodes
                         .upsert_projection_checkpoint(&ProjectionCheckpoint::ready(

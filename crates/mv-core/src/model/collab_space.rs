@@ -167,12 +167,7 @@ pub struct SpaceMembership {
 }
 
 impl SpaceMembership {
-    pub fn new(
-        space_id: Uuid,
-        principal_id: Uuid,
-        actor_kind: ActorKind,
-        role: SpaceRole,
-    ) -> Self {
+    pub fn new(space_id: Uuid, principal_id: Uuid, actor_kind: ActorKind, role: SpaceRole) -> Self {
         Self {
             id: Uuid::now_v7(),
             space_id,

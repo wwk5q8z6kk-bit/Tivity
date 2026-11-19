@@ -2,11 +2,12 @@ name: CI
 
 on:
   push:
+    branches: [main]
   pull_request:
 
 jobs:
   frontend:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
     steps:
@@ -20,7 +21,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
 
@@ -28,13 +29,35 @@ jobs:
         working-directory: frontend
         run: pnpm install --frozen-lockfile
 
+      - name: Install delivery dependencies
+        working-directory: delivery
+        run: pnpm install --frozen-lockfile
+
       - name: Frontend type check
         working-directory: frontend
         run: pnpm check
 
-      - name: Frontend production build
+      - name: Test SQLite task migration
+        run: node --test scripts/import-delivery-tasks.test.mjs
+
+      - name: Check delivery workspace
+        working-directory: delivery
+        run: |
+          pnpm typecheck
+          pnpm typecheck:e2e
+          pnpm test
+
+      - name: Install Chromium
         working-directory: frontend
-        run: pnpm build
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Frontend unit tests
+        working-directory: frontend
+        run: pnpm exec vitest run
+
+      - name: Build and test combined workspace
+        working-directory: frontend
+        run: pnpm exec playwright test
 
   rust:
     runs-on: ubuntu-latest
@@ -123,24 +146,3 @@ jobs:
         run: |
           npm install --save-dev typescript@5.8.3 @types/node@20
           npx tsc --noEmit --skipLibCheck --esModuleInterop --moduleResolution bundler --module preserve --target ES2022 --allowImportingTsExtensions index.ts client.ts
-
-  frontend:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: pnpm
-          cache-dependency-path: frontend/pnpm-lock.yaml
-
-      - name: Frontend Verification
-        working-directory: frontend
-        run: |
-          corepack enable
-          pnpm install --frozen-lockfile --ignore-scripts
-          pnpm run check
-          pnpm run lint
-          pnpm run test:unit

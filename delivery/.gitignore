@@ -1,0 +1,10 @@
+node_modules/
+dist/
+dist-ssr/
+out/
+*.local
+.DS_Store
+*.log
+apps/*/src-tauri/target/
+playwright-report/
+test-results/

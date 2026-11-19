@@ -1,3 +1,43 @@
+# Tivity
+
+Tivity brings project delivery and the MindVault knowledge workspace into one application. Open **Work → Delivery** for projects, issues, requirements, and releases. To carry a decision from a task into the vault, post a comment, select **Review for vault**, then choose **Save reference**. Choose **Follow-up task** instead to give the excerpt a new issue title and send it to the vault task inbox. A saved reference records the source project, task, comment, timestamp, and display author. Saving requires access to the vault server.
+
+## Run the combined web app
+
+Use Node 24 and pnpm 10. From the repository root run:
+
+```sh
+pnpm --dir delivery install --frozen-lockfile
+pnpm --dir frontend install --frozen-lockfile
+pnpm --dir frontend dev
+```
+
+The frontend command builds the embedded delivery workspace before starting Vite. Restart it after editing delivery code. Use `pnpm --dir frontend build` for the combined static distribution. Vault features connect to the existing MindVault API on port 9470 by default. For a browser dev server at `http://localhost:5173`, start the vault from another terminal at the repository root:
+
+```sh
+MINDVAULT_CORS_ALLOWED_ORIGINS=http://localhost:5173 cargo run --locked -p mv-cli -- server start --foreground --config config/default.toml
+```
+
+Use the actual browser origin if Vite selects another port. Protected vaults prompt for their access token when saving an excerpt or importing issues.
+
+The browser delivery workspace uses local storage on the app's origin. Existing standalone browser profiles and desktop SQLite databases stay at their original locations. The review action copies one selected comment into the chosen vault namespace. Team synchronization is still pending.
+
+## Bring issues from Linear or Jira
+
+Open **Work → Tasks → Import issues from Linear or Jira**, choose the CSV export, enter a stable source workspace name and destination namespace, and preview the issues. Confirm to write them to the vault. Unrecognized statuses go to Inbox with the original status retained. The importer handles issue content, labels and display assignees. Comments, attachments and workflow configurations need separate migration. See the [Linear export guide](https://linear.app/docs/exporting-data) and [Jira export guide](https://support.atlassian.com/jira-software-cloud/docs/export-search-results/).
+
+## Import existing delivery tasks
+
+Use Node 24 to preview a project from its standalone SQLite database. To find project IDs, run `sqlite3 -readonly /path/to/tivity.db 'SELECT id, name FROM projects'`.
+
+```sh
+node scripts/import-delivery-tasks.mjs --db /path/to/tivity.db --project PROJECT_ID --namespace team
+```
+
+Add `--apply` to create vault tasks. The importer opens the source read-only, maps task statuses, preserves source IDs and timestamps, and prints a receipt for each accepted task. It defaults to the local vault on port 9470 and reads `MINDVAULT_AUTH_TOKEN` when set. Use `--server` to select another vault. Repeating an unchanged import with the same principal reuses the existing node-create keys. A changed source record can yield a conflict and needs reconciliation. Discussion excerpts remain individually reviewable through the UI. Other record types and browser-origin data still require migration support.
+
+## MindVault foundation
+
 # MindVault
 
 MindVault is evolving from a local-first knowledge memory system into a

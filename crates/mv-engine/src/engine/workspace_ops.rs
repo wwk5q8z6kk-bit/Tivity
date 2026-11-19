@@ -3,10 +3,9 @@ use std::path::{Path, PathBuf};
 
 use mv_core::{
     KnowledgeWorkspace, KnowledgeWorkspaceManifestStore, KnowledgeWorkspaceMode,
-    KnowledgeWorkspaceState, MvError, MvResult, WorkspaceConflict,
-    WorkspaceConflictPayloadV1, WorkspaceDescriptorPayloadV1, WorkspaceEvent,
-    WorkspaceEventActorKind, WorkspaceEventOperation, WorkspaceEventPayloadV1,
-    WorkspaceManifestPayloadFormat, WORKSPACE_CONFLICT_RESOLUTIONS,
+    KnowledgeWorkspaceState, MvError, MvResult, WorkspaceConflict, WorkspaceConflictPayloadV1,
+    WorkspaceDescriptorPayloadV1, WorkspaceEvent, WorkspaceEventActorKind, WorkspaceEventOperation,
+    WorkspaceEventPayloadV1, WorkspaceManifestPayloadFormat, WORKSPACE_CONFLICT_RESOLUTIONS,
 };
 use uuid::Uuid;
 
@@ -83,9 +82,8 @@ impl MindVaultEngine {
             workspace.id,
             correlation_id,
             WorkspaceEventOperation::Mount,
-            None,
-            Some(workspace.revision),
-            Some(workspace.revision),
+            workspace.revision,
+            workspace.revision,
             "mount",
         )
         .await?;
@@ -115,9 +113,8 @@ impl MindVaultEngine {
             workspace.id,
             correlation_id,
             WorkspaceEventOperation::Scan,
-            None,
-            Some(workspace.revision),
-            Some(after.revision),
+            workspace.revision,
+            after.revision,
             "reconcile",
         )
         .await?;
@@ -174,9 +171,8 @@ impl MindVaultEngine {
                 workspace.id,
                 correlation_id,
                 WorkspaceEventOperation::Scan,
-                None,
-                Some(workspace.revision),
-                Some(after.revision),
+                workspace.revision,
+                after.revision,
                 "reconcile",
             )
             .await?;
@@ -273,7 +269,9 @@ impl MindVaultEngine {
         let relative = PathBuf::from(&read.relative_path);
         let absolute = root.join(&relative);
         let before = std::fs::read(&absolute).map_err(|err| {
-            MvError::Storage(format!("canonical document unavailable for conflict proof: {err}"))
+            MvError::Storage(format!(
+                "canonical document unavailable for conflict proof: {err}"
+            ))
         })?;
 
         let payload = WorkspaceConflictPayloadV1::stale_write(
@@ -284,10 +282,15 @@ impl MindVaultEngine {
         );
         let conflict = WorkspaceConflict::open_stale_write(workspace.id, document.id, payload)
             .map_err(|err| MvError::InvalidInput(format!("conflict payload: {err}")))?;
-        self.store.nodes.insert_workspace_conflict(&conflict).await?;
+        self.store
+            .nodes
+            .insert_workspace_conflict(&conflict)
+            .await?;
 
         let after = std::fs::read(&absolute).map_err(|err| {
-            MvError::Storage(format!("canonical document unavailable after conflict: {err}"))
+            MvError::Storage(format!(
+                "canonical document unavailable after conflict: {err}"
+            ))
         })?;
         if before != after {
             return Err(MvError::Internal(
@@ -309,9 +312,7 @@ impl MindVaultEngine {
             .list_workspace_conflicts(workspace.id, open_only)
             .await
     }
-
 }
-
 
 impl MindVaultEngine {
     pub(crate) async fn journal_workspace_phase(
@@ -319,19 +320,14 @@ impl MindVaultEngine {
         workspace_id: Uuid,
         correlation_id: Uuid,
         operation: WorkspaceEventOperation,
-        content_hash: Option<&str>,
-        expected_old_revision: Option<u64>,
-        intended_new_revision: Option<u64>,
+        expected_old_revision: u64,
+        intended_new_revision: u64,
         phase: &str,
     ) -> MvResult<WorkspaceEvent> {
         let mut payload = WorkspaceEventPayloadV1::new();
         payload.phase = Some(phase.to_string());
-        payload.expected_old_revision = expected_old_revision;
-        payload.intended_new_revision = intended_new_revision;
-        if let Some(hash) = content_hash {
-            payload.intended_new_content_hash = Some(hash.to_string());
-            payload.expected_old_content_hash = Some(hash.to_string());
-        }
+        payload.expected_old_revision = Some(expected_old_revision);
+        payload.intended_new_revision = Some(intended_new_revision);
         let event = WorkspaceEvent::completed(
             workspace_id,
             correlation_id,
@@ -343,7 +339,6 @@ impl MindVaultEngine {
         self.store.nodes.append_workspace_event(&event).await
     }
 }
-
 
 fn canonical_workspace_root(root: &Path) -> MvResult<PathBuf> {
     let canonical = fs::canonicalize(root)
@@ -536,7 +531,9 @@ mod tests {
             .get_knowledge_workspace(mounted.workspace.id)
             .await
             .unwrap();
-        mark_initial_workspace_error(&engine, &before).await.unwrap();
+        mark_initial_workspace_error(&engine, &before)
+            .await
+            .unwrap();
         let after = engine
             .get_knowledge_workspace(mounted.workspace.id)
             .await

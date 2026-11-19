@@ -36,7 +36,8 @@ impl MindVaultEngine {
         &self,
         workspace_id: Uuid,
     ) -> MvResult<WorkspaceProjectionOutcome> {
-        self.project_knowledge_workspace(workspace_id, true, None).await
+        self.project_knowledge_workspace(workspace_id, true, None)
+            .await
     }
 
     pub(crate) async fn project_knowledge_workspace(
@@ -255,9 +256,8 @@ impl MindVaultEngine {
                 workspace.id,
                 correlation_id,
                 WorkspaceEventOperation::Scan,
-                None,
-                Some(workspace.revision),
-                Some(workspace.revision),
+                workspace.revision,
+                workspace.revision,
                 "projection",
             )
             .await?;

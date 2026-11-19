@@ -602,7 +602,6 @@ pub trait AdapterPollStore: Send + Sync {
     async fn delete_poll_state(&self, adapter_name: &str) -> MvResult<bool>;
 }
 
-
 fn _assert_adapter_poll_store_object_safe(_: &dyn AdapterPollStore) {}
 
 /// Durable adapter instance binding (SPACE-003).
@@ -724,7 +723,8 @@ pub trait KnowledgeWorkspaceManifestStore: Send + Sync {
     ) -> MvResult<Vec<WorkspaceConflict>>;
 }
 
-fn _assert_knowledge_workspace_manifest_store_object_safe(_: &dyn KnowledgeWorkspaceManifestStore) {}
+fn _assert_knowledge_workspace_manifest_store_object_safe(_: &dyn KnowledgeWorkspaceManifestStore) {
+}
 
 /// Collaborative Space tenancy store (ADR 010 / SPACE-001).
 ///
@@ -959,10 +959,8 @@ pub trait InteroperabilityStore: Send + Sync {
         event_id: Uuid,
     ) -> MvResult<Option<ProjectionCheckpoint>>;
 
-    async fn upsert_projection_checkpoint(
-        &self,
-        checkpoint: &ProjectionCheckpoint,
-    ) -> MvResult<()>;
+    async fn upsert_projection_checkpoint(&self, checkpoint: &ProjectionCheckpoint)
+        -> MvResult<()>;
 
     async fn get_outbox_delivery_status(
         &self,

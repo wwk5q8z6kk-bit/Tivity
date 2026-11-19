@@ -2793,9 +2793,7 @@ impl ActionEnvelope {
                 || self.work_order_id.is_some()
                 || self.agent_run_id.is_some())
         {
-            return Err(
-                "execution context fields require mindvault.action-envelope/v2".into(),
-            );
+            return Err("execution context fields require mindvault.action-envelope/v2".into());
         }
         if self.action_id.is_nil() {
             return Err("action_id is required".into());
@@ -3578,7 +3576,6 @@ mod tests {
         let request = admission_request(AuthorityGrantKind::Tool, ContextCapability::Command);
         let node_id = Uuid::now_v7();
         let grant_id = Uuid::now_v7();
-        let principal = StableUri::principal(node_id, Uuid::now_v7());
         let decision = AdmissionDecision::Admitted {
             grant_id,
             grant_uri: StableUri::authority_grant(node_id, grant_id),

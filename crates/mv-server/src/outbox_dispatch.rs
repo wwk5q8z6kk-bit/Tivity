@@ -16,8 +16,8 @@ pub fn spawn_outbox_dispatching(
     let mut config = OutboxDispatcherConfig::from_env();
     let publisher: Arc<dyn OutboxPublisher> = match HttpOutboxPublisher::from_env() {
         Ok(Some(http)) => {
-            config.destination = StableUri::parse("mindvault://destinations/http")
-                .expect("http destination URI");
+            config.destination =
+                StableUri::parse("mindvault://destinations/http").expect("http destination URI");
             tracing::info!("outbox dispatcher using HttpOutboxPublisher (IK-005)");
             Arc::new(http)
         }

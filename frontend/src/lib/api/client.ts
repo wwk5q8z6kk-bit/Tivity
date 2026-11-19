@@ -240,11 +240,12 @@ export async function fetchJson<T>(
 		}
 
 		if (!res.ok) {
-			let body: unknown = undefined;
+			const text = await res.text();
+			let body: unknown = text;
 			try {
-				body = await res.json();
+				body = JSON.parse(text);
 			} catch {
-				body = await res.text();
+				// The Rust API also returns plain-text authorization errors.
 			}
 			if (res.status >= 500) {
 				markApiFailure('server', path, `HTTP ${res.status}`);

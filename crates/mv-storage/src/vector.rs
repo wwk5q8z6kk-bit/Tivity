@@ -926,6 +926,23 @@ impl KnowledgeVaultIndexNoteEmbeddingFastembedLocalEmbedder {
                 ))
             })?;
 
+            // ORT's lazy default initialization panics when the shared library is
+            // missing. Load it through the fallible API so the engine can report
+            // the unavailable provider and continue serving lexical search.
+            let library = std::env::var_os("ORT_DYLIB_PATH")
+                .filter(|path| !path.is_empty())
+                .unwrap_or_else(|| {
+                    format!(
+                        "{}onnxruntime{}",
+                        std::env::consts::DLL_PREFIX,
+                        std::env::consts::DLL_SUFFIX
+                    )
+                    .into()
+                });
+            ort::init_from(std::path::PathBuf::from(library))
+                .map_err(|err| MvError::Embedding(format!("ONNX Runtime unavailable: {err}")))?
+                .commit();
+
             let options = TextInitOptions::new(resolved_model).with_show_download_progress(false);
             let mut embedding_model = TextEmbedding::try_new(options)
                 .map_err(|err| MvError::Embedding(format!("fastembed init failed: {err}")))?;
