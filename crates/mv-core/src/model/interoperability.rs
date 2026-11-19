@@ -3576,7 +3576,6 @@ mod tests {
         let request = admission_request(AuthorityGrantKind::Tool, ContextCapability::Command);
         let node_id = Uuid::now_v7();
         let grant_id = Uuid::now_v7();
-        let principal = StableUri::principal(node_id, Uuid::now_v7());
         let decision = AdmissionDecision::Admitted {
             grant_id,
             grant_uri: StableUri::authority_grant(node_id, grant_id),

@@ -12149,7 +12149,7 @@ impl KnowledgeWorkspaceManifestStore for SqliteNodeStore {
         after_seq: Option<u64>,
         limit: usize,
     ) -> MvResult<Vec<WorkspaceEvent>> {
-        let limit = i64::try_from(limit.max(1).min(1000)).unwrap_or(1000);
+        let limit = i64::try_from(limit.clamp(1, 1000)).unwrap_or(1000);
         self.with_conn(|conn| {
             let after = i64::try_from(after_seq.unwrap_or(0)).unwrap_or(0);
             let mut statement = conn
