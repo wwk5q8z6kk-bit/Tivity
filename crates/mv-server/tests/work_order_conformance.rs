@@ -566,9 +566,11 @@ fn item_10_conformance_coverage_is_declared() {
             .expect("mv-engine work_order_ops");
     assert_eq!(
         count_test_attrs(&engine),
-        20,
+        21,
         "mv-engine work_order_ops tests"
     );
+
+    assert!(engine.contains("fn work_order_admit_embeds_action_envelope_v2_in_event"));
 
     let api = std::fs::read_to_string(manifest.join("tests/api_integration.rs"))
         .expect("api_integration");
