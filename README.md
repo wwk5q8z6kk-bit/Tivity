@@ -14,7 +14,17 @@ pnpm --dir frontend dev
 
 The frontend command builds the embedded delivery workspace before starting Vite. Restart it after editing delivery code. Use `pnpm --dir frontend build` for the combined static distribution. Vault features connect to the existing MindVault API on port 9470 by default. Server setup follows below.
 
-The browser delivery workspace uses local storage on the app's origin. Existing standalone browser profiles and desktop SQLite databases stay at their original locations. The review action copies one selected comment into the chosen vault namespace. Team synchronization and a bulk migration of existing delivery records are still pending.
+The browser delivery workspace uses local storage on the app's origin. Existing standalone browser profiles and desktop SQLite databases stay at their original locations. The review action copies one selected comment into the chosen vault namespace. Team synchronization is still pending.
+
+## Import existing delivery tasks
+
+Use Node 24 to preview a project from its standalone SQLite database. To find project IDs, run `sqlite3 -readonly /path/to/tivity.db 'SELECT id, name FROM projects'`.
+
+```sh
+node scripts/import-delivery-tasks.mjs --db /path/to/tivity.db --project PROJECT_ID --namespace team
+```
+
+Add `--apply` to create vault tasks. The importer opens the source read-only, maps task statuses, preserves source IDs and timestamps, and prints a receipt for each accepted task. It defaults to the local vault on port 9470 and reads `MINDVAULT_AUTH_TOKEN` when set. Use `--server` to select another vault. Repeating an unchanged import with the same principal reuses the existing node-create keys. A changed source record can yield a conflict and needs reconciliation. Discussion excerpts remain individually reviewable through the UI. Other record types and browser-origin data still require migration support.
 
 ## MindVault foundation
 
