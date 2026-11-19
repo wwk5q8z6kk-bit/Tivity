@@ -54,7 +54,7 @@ test('promotes only a reviewed discussion excerpt and preserves its source on re
 	expect(writes[1]).toEqual(writes[0]);
 	expect(writes[0].key).toMatch(/^[a-f0-9]{64}$/);
 	expect(writes[0].payload).toMatchObject({
-		kind: 'reference',
+		kind: 'observation',
 		title,
 		content: 'Acceptance criteria verified.',
 		source: expect.stringMatching(/^tivity:discussion\//),

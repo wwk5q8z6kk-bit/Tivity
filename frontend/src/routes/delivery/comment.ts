@@ -29,7 +29,7 @@ export function excerptRequest(
 	title: string = excerpt.taskTitle
 ) {
 	return {
-		kind,
+		kind: kind === 'reference' ? ('observation' as const) : kind,
 		title,
 		content: excerpt.body,
 		namespace,

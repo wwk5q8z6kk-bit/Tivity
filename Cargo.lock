@@ -5385,6 +5385,7 @@ dependencies = [
  "lancedb",
  "libc",
  "mv-core",
+ "ort",
  "rand 0.8.5",
  "reqwest",
  "rusqlite",
