@@ -22,20 +22,26 @@ export function isExcerpt(value: unknown): value is DiscussionExcerpt {
 	);
 }
 
-export function excerptRequest(excerpt: DiscussionExcerpt, namespace: string | null) {
+export function excerptRequest(
+	excerpt: DiscussionExcerpt,
+	namespace: string | null,
+	kind: 'reference' | 'task' = 'reference',
+	title: string = excerpt.taskTitle
+) {
 	return {
-		kind: 'reference',
-		title: excerpt.taskTitle,
+		kind,
+		title,
 		content: excerpt.body,
 		namespace,
 		source:
 			'tivity:discussion/' +
 			[excerpt.projectId, excerpt.taskId, excerpt.commentId].map(encodeURIComponent).join('/'),
-		tags: ['delivery-evidence'],
+		tags: [kind === 'task' ? 'delivery-follow-up' : 'delivery-evidence'],
 		metadata: {
 			project_id: excerpt.projectId,
 			task_id: excerpt.taskId,
 			comment_id: excerpt.commentId,
+			...(kind === 'task' ? { task_status: 'inbox' } : {}),
 			author_label: excerpt.author,
 			source_created_at_ms: excerpt.createdAt
 		}

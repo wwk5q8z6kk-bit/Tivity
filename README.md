@@ -1,6 +1,6 @@
 # Tivity
 
-Tivity brings project delivery and the MindVault knowledge workspace into one application. Open **Work → Delivery** for projects, issues, requirements, and releases. To carry a decision from a task into the vault, post a comment, select **Review for vault**, then choose **Save reference**. A saved reference records the source project, task, comment, timestamp, and display author. Saving requires access to the vault server.
+Tivity brings project delivery and the MindVault knowledge workspace into one application. Open **Work → Delivery** for projects, issues, requirements, and releases. To carry a decision from a task into the vault, post a comment, select **Review for vault**, then choose **Save reference**. Choose **Follow-up task** instead to give the excerpt a new issue title and send it to the vault task inbox. A saved reference records the source project, task, comment, timestamp, and display author. Saving requires access to the vault server.
 
 ## Run the combined web app
 

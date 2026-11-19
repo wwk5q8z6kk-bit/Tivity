@@ -39,7 +39,18 @@ test('promotes only a reviewed discussion excerpt and preserves its source on re
 		}
 		await expect(page.getByText('Reference saved to the vault.')).toBeVisible();
 	}
-	expect(writes).toHaveLength(2);
+	await review.click();
+	await page.getByLabel('Save as').selectOption('task');
+	await page.getByLabel('Follow-up title').fill('Ship the accepted change');
+	await page.getByRole('button', { name: 'Create follow-up task' }).click();
+	await expect(page.getByText('Follow-up task created in the vault inbox.')).toBeVisible();
+	expect(writes).toHaveLength(3);
+	expect(writes[2].key).not.toBe(writes[0].key);
+	expect(writes[2].payload).toMatchObject({
+		kind: 'task',
+		title: 'Ship the accepted change',
+		metadata: { task_status: 'inbox' }
+	});
 	expect(writes[1]).toEqual(writes[0]);
 	expect(writes[0].key).toMatch(/^[a-f0-9]{64}$/);
 	expect(writes[0].payload).toMatchObject({
