@@ -81,6 +81,15 @@ impl AuthContext {
         self.role == AuthRole::Admin
     }
 
+    pub(crate) fn is_uncredentialed_system_admin(&self) -> bool {
+        self.is_admin()
+            && self.namespace.is_none()
+            && self.consumer_name.is_none()
+            && matches!(self.subject.as_deref(), None | Some("local-system"))
+            // An authenticated JWT can carry the same subject label.
+            && !AuthConfig::from_env().is_enabled()
+    }
+
     pub fn from_access_key(key: &AccessKey, template: &PermissionTemplate) -> Self {
         Self {
             subject: Some(format!("access-key:{}", key.id)),
