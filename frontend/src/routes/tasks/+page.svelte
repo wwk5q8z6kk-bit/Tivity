@@ -1,4 +1,5 @@
 <script lang="ts">
+	import IssueCsvImport from '$lib/components/IssueCsvImport.svelte';
 	import ViewToggle from '$lib/components/ViewToggle.svelte';
 	import { createViewMode, setViewMode } from '$lib/utils/view-mode';
 	import { setViewPreference } from '$lib/stores/view-preferences';
@@ -62,6 +63,8 @@
 			<ViewToggle {views} activeView={$currentView} on:change={handleViewChange} />
 		</div>
 	</div>
+
+	<IssueCsvImport />
 
 	<div class="grid w-full items-start mt-2">
 		{#if $currentView === 'list'}

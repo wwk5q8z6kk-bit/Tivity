@@ -16,6 +16,10 @@ The frontend command builds the embedded delivery workspace before starting Vite
 
 The browser delivery workspace uses local storage on the app's origin. Existing standalone browser profiles and desktop SQLite databases stay at their original locations. The review action copies one selected comment into the chosen vault namespace. Team synchronization is still pending.
 
+## Bring issues from Linear or Jira
+
+Open **Work → Tasks → Import issues from Linear or Jira**, choose the CSV export, enter a stable source workspace name and destination namespace, and preview the issues. Confirm to write them to the vault. Unrecognized statuses go to Inbox with the original status retained. The importer handles issue content, labels and display assignees. Comments, attachments and workflow configurations need separate migration. See the [Linear export guide](https://linear.app/docs/exporting-data) and [Jira export guide](https://support.atlassian.com/jira-software-cloud/docs/export-search-results/).
+
 ## Import existing delivery tasks
 
 Use Node 24 to preview a project from its standalone SQLite database. To find project IDs, run `sqlite3 -readonly /path/to/tivity.db 'SELECT id, name FROM projects'`.

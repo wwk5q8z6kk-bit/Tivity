@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { ApiError, fetchJson } from '$lib/api/client';
+	import { ApiError } from '$lib/api/client';
+	import { saveSourceNode } from '$lib/api/source-import';
 	import { activeNamespace } from '$lib/stores/namespace';
 	import { excerptRequest, isExcerpt, type DiscussionExcerpt } from './comment';
 
@@ -38,18 +39,9 @@
 				kind,
 				kind === 'task' ? title.trim() : excerpt.taskTitle
 			);
-			const bytes = new TextEncoder().encode(
-				JSON.stringify(
-					kind === 'task' ? [destination, payload.source, kind] : [destination, payload.source]
-				)
-			);
-			const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
-			const key = Array.from(digest, (byte) => byte.toString(16).padStart(2, '0')).join('');
-			await fetchJson('/api/v1/nodes', {
-				method: 'POST',
-				headers: { 'Idempotency-Key': key, ...(token ? { Authorization: 'Bearer ' + token } : {}) },
-				body: JSON.stringify(payload)
-			});
+			const identity = [destination, payload.source];
+			if (kind === 'task') identity.push(kind);
+			await saveSourceNode(payload, identity, token);
 			excerpt = null;
 			message =
 				kind === 'task'

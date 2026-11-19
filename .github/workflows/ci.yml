@@ -57,7 +57,7 @@ jobs:
 
       - name: Build and test combined workspace
         working-directory: frontend
-        run: pnpm exec playwright test delivery.spec.ts
+        run: pnpm exec playwright test
 
   rust:
     runs-on: ubuntu-latest
