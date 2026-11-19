@@ -37,7 +37,7 @@ test('previews a Jira export and resumes importing at the first unaccepted issue
 		)
 	});
 	await page.getByRole('button', { name: 'Preview import' }).click();
-	await expect(page.getByText(/2 jira issues for engineering/i)).toBeVisible();
+	await expect(page.getByText('2 Jira issues for engineering.', { exact: false })).toBeVisible();
 	expect(seen).toHaveLength(0);
 	await page.getByRole('button', { name: 'Import issues', exact: true }).click();
 	await expect(page.getByText('1 of 2 accepted')).toBeVisible();

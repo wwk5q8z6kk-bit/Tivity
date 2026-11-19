@@ -82,9 +82,8 @@ impl MindVaultEngine {
             workspace.id,
             correlation_id,
             WorkspaceEventOperation::Mount,
-            None,
-            Some(workspace.revision),
-            Some(workspace.revision),
+            workspace.revision,
+            workspace.revision,
             "mount",
         )
         .await?;
@@ -114,9 +113,8 @@ impl MindVaultEngine {
             workspace.id,
             correlation_id,
             WorkspaceEventOperation::Scan,
-            None,
-            Some(workspace.revision),
-            Some(after.revision),
+            workspace.revision,
+            after.revision,
             "reconcile",
         )
         .await?;
@@ -173,9 +171,8 @@ impl MindVaultEngine {
                 workspace.id,
                 correlation_id,
                 WorkspaceEventOperation::Scan,
-                None,
-                Some(workspace.revision),
-                Some(after.revision),
+                workspace.revision,
+                after.revision,
                 "reconcile",
             )
             .await?;
@@ -323,19 +320,14 @@ impl MindVaultEngine {
         workspace_id: Uuid,
         correlation_id: Uuid,
         operation: WorkspaceEventOperation,
-        content_hash: Option<&str>,
-        expected_old_revision: Option<u64>,
-        intended_new_revision: Option<u64>,
+        expected_old_revision: u64,
+        intended_new_revision: u64,
         phase: &str,
     ) -> MvResult<WorkspaceEvent> {
         let mut payload = WorkspaceEventPayloadV1::new();
         payload.phase = Some(phase.to_string());
-        payload.expected_old_revision = expected_old_revision;
-        payload.intended_new_revision = intended_new_revision;
-        if let Some(hash) = content_hash {
-            payload.intended_new_content_hash = Some(hash.to_string());
-            payload.expected_old_content_hash = Some(hash.to_string());
-        }
+        payload.expected_old_revision = Some(expected_old_revision);
+        payload.intended_new_revision = Some(intended_new_revision);
         let event = WorkspaceEvent::completed(
             workspace_id,
             correlation_id,

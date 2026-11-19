@@ -256,9 +256,8 @@ impl MindVaultEngine {
                 workspace.id,
                 correlation_id,
                 WorkspaceEventOperation::Scan,
-                None,
-                Some(workspace.revision),
-                Some(workspace.revision),
+                workspace.revision,
+                workspace.revision,
                 "projection",
             )
             .await?;

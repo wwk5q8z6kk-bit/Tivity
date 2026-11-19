@@ -12,7 +12,13 @@ pnpm --dir frontend install --frozen-lockfile
 pnpm --dir frontend dev
 ```
 
-The frontend command builds the embedded delivery workspace before starting Vite. Restart it after editing delivery code. Use `pnpm --dir frontend build` for the combined static distribution. Vault features connect to the existing MindVault API on port 9470 by default. Server setup follows below.
+The frontend command builds the embedded delivery workspace before starting Vite. Restart it after editing delivery code. Use `pnpm --dir frontend build` for the combined static distribution. Vault features connect to the existing MindVault API on port 9470 by default. For a browser dev server at `http://localhost:5173`, start the vault from another terminal at the repository root:
+
+```sh
+MINDVAULT_CORS_ALLOWED_ORIGINS=http://localhost:5173 cargo run --locked -p mv-cli -- server start --foreground --config config/default.toml
+```
+
+Use the actual browser origin if Vite selects another port. Protected vaults prompt for their access token when saving an excerpt or importing issues.
 
 The browser delivery workspace uses local storage on the app's origin. Existing standalone browser profiles and desktop SQLite databases stay at their original locations. The review action copies one selected comment into the chosen vault namespace. Team synchronization is still pending.
 
