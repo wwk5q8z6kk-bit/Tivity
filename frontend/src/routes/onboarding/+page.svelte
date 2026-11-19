@@ -20,7 +20,7 @@
 		}
 		creating = true;
 		try {
-			await createNoteOptimistic(noteContent || 'My first note in MindVault!', noteTitle.trim());
+			await createNoteOptimistic(noteContent || 'My first note in Tivity!', noteTitle.trim());
 			onboarding.markNoteCreated();
 			pushToast('Note created!', 'success');
 			onboarding.nextStep();
@@ -70,7 +70,7 @@
 				<div class="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-sky-500/20 text-2xl text-sky-300">
 					MV
 				</div>
-				<h1 class="text-2xl font-bold text-white">Welcome to MindVault</h1>
+				<h1 class="text-2xl font-bold text-white">Welcome to Tivity</h1>
 				<p class="mt-3 text-sm text-slate-400">
 					Your private, local-first vault for knowledge and execution.
 					<br />
@@ -163,7 +163,7 @@
 				</div>
 				<h2 class="mt-4 text-xl font-semibold text-white">Add your first task</h2>
 				<p class="mt-2 text-sm text-slate-400">
-					MindVault understands natural language. Try adding a due date, priority, or tags.
+					Tivity understands natural language. Try adding a due date, priority, or tags.
 				</p>
 
 				<div class="mt-6">
@@ -267,7 +267,7 @@
 				</div>
 				<h2 class="text-xl font-semibold text-white">You're all set!</h2>
 				<p class="mt-2 text-sm text-slate-400">
-					Start exploring MindVault and build your knowledge base.
+					Start exploring Tivity and build your knowledge base.
 				</p>
 				<button
 					class="mt-6 rounded-lg bg-sky-500 px-6 py-2 text-sm font-semibold text-white hover:bg-sky-400"

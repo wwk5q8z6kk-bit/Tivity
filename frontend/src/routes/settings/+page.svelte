@@ -771,7 +771,7 @@
 	<div class="min-w-0 flex-1">
 		<h2 class="text-lg font-semibold text-[rgb(var(--mv-text))] lg:hidden">Settings</h2>
 		<p class="mt-1 text-xs text-[rgb(var(--mv-muted))] lg:hidden">
-			Configure MindVault preferences.
+			Configure Tivity preferences.
 		</p>
 
 		<div class="mt-6 flex flex-col gap-6 lg:mt-0">
@@ -859,7 +859,7 @@
 					<div
 						class="mt-3 rounded-lg border border-dashed border-[rgb(var(--mv-border))] p-3 text-center text-[11px] text-[rgb(var(--mv-muted))]/60"
 					>
-						No adapters configured. Adapters connect MindVault to external services.
+						No adapters configured. Adapters connect Tivity to external services.
 					</div>
 				{:else}
 					<div class="mt-3 space-y-2">
@@ -1929,7 +1929,7 @@
 				<h3 class="text-sm font-semibold text-[rgb(var(--mv-text))]">About</h3>
 				<div class="mt-2 text-xs text-[rgb(var(--mv-muted))]">
 					<p>
-						<strong class="text-[rgb(var(--mv-text))]">MindVault</strong> - Proprietary Second Brain Platform
+						<strong class="text-[rgb(var(--mv-text))]">Tivity</strong> - Project delivery and knowledge workspace
 					</p>
 					<p class="mt-1">Version 0.1.0</p>
 					<p class="mt-1">Local-first, AI-native, desktop-optimized knowledge management.</p>

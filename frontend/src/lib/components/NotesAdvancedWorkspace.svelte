@@ -540,7 +540,7 @@
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>MindVault Notes Export</title>
+	<title>Tivity Notes Export</title>
 	<style>
 		body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 800px; margin: 0 auto; padding: 2rem; background: #0f172a; color: #e2e8f0; }
 		h1 { color: #38bdf8; border-bottom: 1px solid #334155; padding-bottom: 1rem; }
@@ -557,7 +557,7 @@
 	</style>
 </head>
 <body>
-	<h1>MindVault Notes Export</h1>
+	<h1>Tivity Notes Export</h1>
 	<p style="color: #64748b; font-size: 0.875rem;">Exported ${notesToExport.length} note${notesToExport.length === 1 ? '' : 's'} on ${new Date().toLocaleString()}</p>
 	${notesHtml}
 </body>

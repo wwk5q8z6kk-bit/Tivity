@@ -332,7 +332,7 @@
 				<div
 					class="relative flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-[rgb(var(--mv-accent))] to-[rgb(var(--mv-accent-strong))] text-white shadow-lg shadow-[rgb(var(--mv-accent))]/20"
 				>
-					<span class="font-bold text-lg tracking-tight">MV</span>
+					<span class="font-bold text-lg tracking-tight">T</span>
 					<div class="absolute inset-0 rounded-xl ring-1 ring-inset ring-white/20"></div>
 				</div>
 				<div class="flex flex-col">
@@ -542,7 +542,7 @@
 						<div
 							class="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-[rgb(var(--mv-accent))] to-[rgb(var(--mv-accent-strong))] text-white shadow-lg"
 						>
-							<span class="font-bold">MV</span>
+							<span class="font-bold">T</span>
 						</div>
 						<div class="flex flex-col">
 							<span class="font-bold text-lg leading-tight">Tivity</span>
