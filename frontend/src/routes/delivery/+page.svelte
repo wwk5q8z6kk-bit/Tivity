@@ -1,9 +1,11 @@
 <script lang="ts">
+	import SharedTaskDiscussions from './SharedTaskDiscussions.svelte';
 	import { ApiError } from '$lib/api/client';
 	import { saveSourceNode } from '$lib/api/source-import';
 	import { activeNamespace } from '$lib/stores/namespace';
 	import { excerptRequest, isExcerpt, type DiscussionExcerpt } from './comment';
 
+	let showShared = false;
 	let frame: HTMLIFrameElement;
 	let excerpt: DiscussionExcerpt | null = null;
 	let busy = false;
@@ -104,6 +106,16 @@
 	</section>
 {/if}
 {#if message}<p role="status">{message}</p>{/if}
+<button
+	class="my-2 rounded border px-3 py-1"
+	aria-expanded={showShared}
+	on:click={() => (showShared = !showShared)}>Shared task discussions</button
+>
+{#if showShared}
+	{#key $activeNamespace}<SharedTaskDiscussions
+			initialNamespace={$activeNamespace ?? 'default'}
+		/>{/key}
+{/if}
 <iframe
 	title="Tivity delivery workspace"
 	bind:this={frame}

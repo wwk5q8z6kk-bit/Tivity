@@ -20,7 +20,9 @@ MINDVAULT_CORS_ALLOWED_ORIGINS=http://localhost:5173 cargo run --locked -p mv-cl
 
 Use the actual browser origin if Vite selects another port. Protected vaults prompt for their access token when saving an excerpt or importing issues.
 
-The browser delivery workspace uses local storage on the app's origin. Existing standalone browser profiles and desktop SQLite databases stay at their original locations. The review action copies one selected comment into the chosen vault namespace. Team synchronization is still pending.
+The browser delivery workspace uses local storage on the app's origin. Existing standalone browser profiles and desktop SQLite databases stay at their original locations. The review action copies one selected comment into the chosen vault namespace. For a shared discussion, open **Delivery → Shared task discussions**, enter the vault namespace and an access token if required, and choose **Load tasks**. Everyone connected to the same vault and namespace can read the same task threads with read access. Writers can post and resolve comments. Use **Refresh** in the thread to see a teammate’s changes. The delivery board itself still uses local storage.
+
+For clients on different computers, set `VITE_API_BASE_URL` to the shared vault’s HTTPS origin when building the frontend. Configure the vault’s allowed CORS origins to include the frontend origin.
 
 ## Bring issues from Linear or Jira
 

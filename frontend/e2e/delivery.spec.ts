@@ -61,3 +61,52 @@ test('promotes only a reviewed discussion excerpt and preserves its source on re
 		metadata: { author_label: 'You' }
 	});
 });
+
+test('uses scoped credentials for shared tasks and clears the thread on disconnect', async ({
+	page
+}) => {
+	let body = '';
+	await page.route('**/api/v1/**', async (route) => {
+		const req = route.request();
+		const url = new URL(req.url());
+		if (
+			url.searchParams.get('namespace') === 'delivery-qa' ||
+			url.pathname.endsWith('/shared/comments')
+		) {
+			if (req.headers().authorization !== 'Bearer scoped-test') {
+				await route.fulfill({ status: 401 });
+				return;
+			}
+			if (url.pathname.endsWith('/comments')) {
+				if (req.method() === 'POST') body = req.postDataJSON().body;
+				const row = {
+					id: 'comment',
+					node_id: 'shared',
+					body,
+					created_at: new Date().toISOString()
+				};
+				await route.fulfill({ json: req.method() === 'POST' ? row : body ? [row] : [] });
+			} else {
+				expect(url.searchParams.get('kind')).toBe('task');
+				await route.fulfill({ json: [{ id: 'shared', title: 'Review launch' }] });
+			}
+			return;
+		}
+		await route.fulfill({ json: [] });
+	});
+
+	await page.goto('/delivery');
+	await page.getByRole('button', { name: 'Shared task discussions' }).click();
+	const panel = page.getByRole('region', { name: 'Shared task discussions' });
+	await panel.getByLabel('Vault namespace').fill('delivery-qa');
+	await panel.getByRole('button', { name: 'Load tasks' }).click();
+	await expect(panel.getByRole('alert')).toContainText('valid vault access token');
+	await panel.getByLabel('Vault access token').fill('scoped-test');
+	await panel.getByRole('button', { name: 'Load tasks' }).click();
+	await panel.getByLabel('New comment').fill('Launch approved');
+	await panel.getByRole('button', { name: 'Add comment' }).click();
+	await expect(panel.getByText('Launch approved', { exact: true })).toBeVisible();
+	await panel.getByRole('button', { name: 'Disconnect' }).click();
+	await expect(panel.getByLabel('Vault access token')).toHaveValue('');
+	await expect(panel.getByText('Launch approved', { exact: true })).toHaveCount(0);
+});

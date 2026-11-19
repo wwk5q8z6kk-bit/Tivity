@@ -1,4 +1,4 @@
-import { fetchJson } from './client';
+import { bearerHeaders, fetchJson } from './client';
 import type { KnowledgeNode, StoreNodeRequest } from './types';
 
 export async function saveSourceNode(
@@ -11,7 +11,7 @@ export async function saveSourceNode(
 	const key = Array.from(digest, (byte) => byte.toString(16).padStart(2, '0')).join('');
 	return fetchJson<KnowledgeNode>('/api/v1/nodes', {
 		method: 'POST',
-		headers: { 'Idempotency-Key': key, ...(token ? { Authorization: 'Bearer ' + token } : {}) },
+		headers: { 'Idempotency-Key': key, ...bearerHeaders(token) },
 		body: JSON.stringify(payload)
 	});
 }

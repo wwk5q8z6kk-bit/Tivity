@@ -162,6 +162,10 @@ async function probeApiReachability(timeoutMs: number): Promise<boolean> {
 	return reachabilityProbePromise;
 }
 
+export function bearerHeaders(token: string): Record<string, string> {
+	return token ? { Authorization: 'Bearer ' + token } : {};
+}
+
 export class ApiError extends Error {
 	status: number;
 	body?: unknown;

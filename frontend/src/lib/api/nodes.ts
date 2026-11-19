@@ -1,4 +1,4 @@
-import { fetchJson } from './client';
+import { bearerHeaders, fetchJson } from './client';
 import type { KnowledgeNode, NodeKind, StoreNodeRequest } from './types';
 
 export type ListNodesParams = {
@@ -8,14 +8,19 @@ export type ListNodesParams = {
 	offset?: number;
 };
 
-export async function listNodes(params: ListNodesParams = {}): Promise<KnowledgeNode[]> {
+export async function listNodes(
+	params: ListNodesParams = {},
+	token = ''
+): Promise<KnowledgeNode[]> {
 	const searchParams = new URLSearchParams();
 	if (params.kind) searchParams.set('kind', params.kind);
 	if (params.namespace) searchParams.set('namespace', params.namespace);
 	if (params.limit) searchParams.set('limit', String(params.limit));
 	if (params.offset) searchParams.set('offset', String(params.offset));
 	const suffix = searchParams.toString();
-	return await fetchJson<KnowledgeNode[]>(`/api/v1/nodes${suffix ? `?${suffix}` : ''}`);
+	return await fetchJson<KnowledgeNode[]>(`/api/v1/nodes${suffix ? `?${suffix}` : ''}`, {
+		headers: bearerHeaders(token)
+	});
 }
 
 export async function createNode(payload: StoreNodeRequest): Promise<KnowledgeNode> {

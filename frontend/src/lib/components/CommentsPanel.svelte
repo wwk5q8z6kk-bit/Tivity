@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import { pushToast } from '$lib/stores/toast';
 	import {
 		createNodeComment,
@@ -9,6 +8,7 @@
 		type NodeComment
 	} from '$lib/api/comments';
 
+	export let token = '';
 	export let nodeId: string | null = null;
 	export let nodeTitle: string | null = null;
 
@@ -20,15 +20,12 @@
 	let includeResolved = false;
 	let body = '';
 	let loadedForNode: string | null = null;
-
-	onMount(async () => {
-		if (nodeId) {
-			await refreshComments();
-		}
-	});
+	let refreshVersion = 0;
+	let loadError = false;
 
 	$: if (nodeId && nodeId !== loadedForNode) {
 		loadedForNode = nodeId;
+		comments = [];
 		body = '';
 		void refreshComments();
 	}
@@ -41,13 +38,20 @@
 
 	async function refreshComments() {
 		if (!nodeId) return;
+		const target = nodeId;
+		const version = ++refreshVersion;
 		loading = true;
+		loadError = false;
 		try {
-			comments = await listNodeComments(nodeId, includeResolved);
+			const rows = await listNodeComments(target, includeResolved, token);
+			if (version === refreshVersion && target === nodeId) comments = rows;
 		} catch {
-			pushToast('Failed to load comments', 'danger');
+			if (version === refreshVersion && target === nodeId) {
+				comments = [];
+				loadError = true;
+			}
 		} finally {
-			loading = false;
+			if (version === refreshVersion) loading = false;
 		}
 	}
 
@@ -74,7 +78,7 @@
 		}
 		saving = true;
 		try {
-			await createNodeComment({ node_id: nodeId, body: trimmed });
+			await createNodeComment({ node_id: nodeId, body: trimmed }, token);
 			body = '';
 			pushToast('Comment added', 'success');
 			await refreshComments();
@@ -89,7 +93,7 @@
 		if (!nodeId) return;
 		resolvingId = commentId;
 		try {
-			await resolveNodeComment(nodeId, commentId);
+			await resolveNodeComment(nodeId, commentId, token);
 			pushToast('Comment resolved', 'success');
 			await refreshComments();
 		} catch (e: any) {
@@ -104,7 +108,7 @@
 		if (!confirm('Delete this comment?')) return;
 		deletingId = commentId;
 		try {
-			await deleteNodeComment(nodeId, commentId);
+			await deleteNodeComment(nodeId, commentId, token);
 			pushToast('Comment deleted', 'success');
 			await refreshComments();
 		} catch (e: any) {
@@ -182,6 +186,8 @@
 			<p class="text-[10px] uppercase tracking-wide text-slate-500">History</p>
 			{#if loading && comments.length === 0}
 				<p class="text-[10px] text-slate-500">Loading comments…</p>
+			{:else if loadError}
+				<p role="alert">Could not load comments. Refresh to try again.</p>
 			{:else if comments.length === 0}
 				<p class="text-[10px] text-slate-500">No comments yet.</p>
 			{:else}
