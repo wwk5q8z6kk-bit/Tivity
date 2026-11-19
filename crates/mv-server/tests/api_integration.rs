@@ -245,7 +245,6 @@ async fn workspace_api_mounts_lists_trees_and_reads_without_exposing_root_locato
     assert_eq!(cross_workspace_read.status(), StatusCode::NOT_FOUND);
 }
 
-
 #[tokio::test]
 async fn workspace_conflicts_stale_hash_leaves_bytes_and_lists_resolutions() {
     let (router, state, _tmp, workspace_root) = setup_with_workspace_root().await;
@@ -284,7 +283,10 @@ async fn workspace_conflicts_stale_hash_leaves_bytes_and_lists_resolutions() {
         .find(|entry| entry["relative_path"] == "Projects/MindVault.md")
         .expect("document entry");
     let document_id = uuid::Uuid::parse_str(document["document_id"].as_str().unwrap()).unwrap();
-    let canonical_hash = document["content_hash"].as_str().expect("content hash").to_string();
+    let canonical_hash = document["content_hash"]
+        .as_str()
+        .expect("content hash")
+        .to_string();
 
     let absolute = workspace_root.join("Projects/MindVault.md");
     let before = std::fs::read(&absolute).unwrap();
@@ -300,7 +302,11 @@ async fn workspace_conflicts_stale_hash_leaves_bytes_and_lists_resolutions() {
         .await
         .expect("stale write must record a conflict");
     assert_eq!(conflict.conflict_kind.as_str(), "stale_write");
-    assert_eq!(std::fs::read(&absolute).unwrap(), before, "canonical bytes must not change");
+    assert_eq!(
+        std::fs::read(&absolute).unwrap(),
+        before,
+        "canonical bytes must not change"
+    );
 
     let listed = router
         .oneshot(json_request(
@@ -326,7 +332,10 @@ async fn workspace_conflicts_stale_hash_leaves_bytes_and_lists_resolutions() {
     assert_eq!(conflicts[0]["conflict_kind"], "stale_write");
     assert_eq!(conflicts[0]["state"], "open");
     assert_eq!(conflicts[0]["canonical_content_hash"], canonical_hash);
-    assert_eq!(conflicts[0]["expected_content_hash"], "sha256:stale-expected");
+    assert_eq!(
+        conflicts[0]["expected_content_hash"],
+        "sha256:stale-expected"
+    );
     assert_eq!(
         conflicts[0]["available_resolutions"],
         listed["resolution_choices"]

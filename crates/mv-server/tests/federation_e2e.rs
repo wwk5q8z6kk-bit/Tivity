@@ -274,17 +274,11 @@ async fn federation_disabled_by_default() {
 
     let tmp = TempDir::new().expect("tempdir");
     let config = test_config(&tmp.path().to_string_lossy());
-    let engine = Arc::new(
-        MindVaultEngine::init(config)
-            .await
-            .expect("engine init"),
-    );
+    let engine = Arc::new(MindVaultEngine::init(config).await.expect("engine init"));
     let state = Arc::new(AppState::new(Arc::clone(&engine)));
     let router = create_router(state);
 
-    let listener = TcpListener::bind("127.0.0.1:0")
-        .await
-        .expect("bind");
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
     let addr = listener.local_addr().expect("addr");
     tokio::spawn(async move {
         axum::serve(listener, router).await.ok();
@@ -292,10 +286,7 @@ async fn federation_disabled_by_default() {
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
     let client = reqwest::Client::new();
-    for path in [
-        "/api/v1/federation/peers",
-        "/api/v1/federation/identity",
-    ] {
+    for path in ["/api/v1/federation/peers", "/api/v1/federation/identity"] {
         let resp = client
             .get(format!("http://{addr}{path}"))
             .send()

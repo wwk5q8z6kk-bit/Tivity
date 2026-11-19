@@ -296,10 +296,7 @@ impl SqliteNodeStore {
                 40,
                 include_str!("../../../migrations/040_identity_registry.sql"),
             ),
-            (
-                41,
-                include_str!("../../../migrations/041_retire_plans.sql"),
-            ),
+            (41, include_str!("../../../migrations/041_retire_plans.sql")),
             (
                 42,
                 include_str!("../../../migrations/042_collab_spaces_and_membership.sql"),
@@ -692,8 +689,6 @@ fn parse_dt_strict(column: usize, s: &str) -> rusqlite::Result<chrono::DateTime<
         .map_err(|err| rusqlite::Error::FromSqlConversionFailure(column, Type::Text, Box::new(err)))
 }
 
-
-
 fn parse_optional_dt_strict(
     column: usize,
     s: Option<String>,
@@ -824,8 +819,6 @@ fn row_to_workspace_document(
         updated_at: parse_dt_strict(10, &updated_at)?,
     })
 }
-
-
 
 fn row_to_workspace_conflict(row: &rusqlite::Row<'_>) -> rusqlite::Result<WorkspaceConflict> {
     let id: String = row.get(0)?;
@@ -2051,15 +2044,25 @@ impl SqliteNodeStore {
         Ok(())
     }
 
-    
     fn row_to_identity_record(row: &rusqlite::Row<'_>) -> MvResult<IdentityRecord> {
-        let principal_id = Uuid::parse_str(&row.get::<_, String>(0).map_err(|e| MvError::Storage(e.to_string()))?)
-            .map_err(|e| MvError::Storage(e.to_string()))?;
-        let revision = row.get::<_, i64>(1).map_err(|e| MvError::Storage(e.to_string()))? as u64;
-        let principal_uri = StableUri::parse(row.get::<_, String>(2).map_err(|e| MvError::Storage(e.to_string()))?)
-            .map_err(MvError::InvalidInput)?;
-        let governing_node_uri = StableUri::parse(row.get::<_, String>(3).map_err(|e| MvError::Storage(e.to_string()))?)
-            .map_err(MvError::InvalidInput)?;
+        let principal_id = Uuid::parse_str(
+            &row.get::<_, String>(0)
+                .map_err(|e| MvError::Storage(e.to_string()))?,
+        )
+        .map_err(|e| MvError::Storage(e.to_string()))?;
+        let revision = row
+            .get::<_, i64>(1)
+            .map_err(|e| MvError::Storage(e.to_string()))? as u64;
+        let principal_uri = StableUri::parse(
+            row.get::<_, String>(2)
+                .map_err(|e| MvError::Storage(e.to_string()))?,
+        )
+        .map_err(MvError::InvalidInput)?;
+        let governing_node_uri = StableUri::parse(
+            row.get::<_, String>(3)
+                .map_err(|e| MvError::Storage(e.to_string()))?,
+        )
+        .map_err(MvError::InvalidInput)?;
         let actor_kind = row
             .get::<_, String>(4)
             .map_err(|e| MvError::Storage(e.to_string()))?
@@ -2070,15 +2073,19 @@ impl SqliteNodeStore {
             .map_err(|e| MvError::Storage(e.to_string()))?
             .parse::<IdentityStatus>()
             .map_err(MvError::InvalidInput)?;
-        let display_name: Option<String> = row.get(6).map_err(|e| MvError::Storage(e.to_string()))?;
-        let external_subject: Option<String> = row.get(7).map_err(|e| MvError::Storage(e.to_string()))?;
+        let display_name: Option<String> =
+            row.get(6).map_err(|e| MvError::Storage(e.to_string()))?;
+        let external_subject: Option<String> =
+            row.get(7).map_err(|e| MvError::Storage(e.to_string()))?;
         let created_at = chrono::DateTime::parse_from_rfc3339(
-            &row.get::<_, String>(8).map_err(|e| MvError::Storage(e.to_string()))?,
+            &row.get::<_, String>(8)
+                .map_err(|e| MvError::Storage(e.to_string()))?,
         )
         .map_err(|e| MvError::Storage(e.to_string()))?
         .with_timezone(&chrono::Utc);
         let updated_at = chrono::DateTime::parse_from_rfc3339(
-            &row.get::<_, String>(9).map_err(|e| MvError::Storage(e.to_string()))?,
+            &row.get::<_, String>(9)
+                .map_err(|e| MvError::Storage(e.to_string()))?,
         )
         .map_err(|e| MvError::Storage(e.to_string()))?
         .with_timezone(&chrono::Utc);
@@ -2110,7 +2117,10 @@ impl SqliteNodeStore {
         let mut rows = stmt
             .query(params![principal_id.to_string()])
             .map_err(|err| MvError::Storage(err.to_string()))?;
-        match rows.next().map_err(|err| MvError::Storage(err.to_string()))? {
+        match rows
+            .next()
+            .map_err(|err| MvError::Storage(err.to_string()))?
+        {
             Some(row) => Ok(Some(Self::row_to_identity_record(row)?)),
             None => Ok(None),
         }
@@ -3720,7 +3730,10 @@ impl InteroperabilityStore for SqliteNodeStore {
             let mut rows = stmt
                 .query(params![principal_uri.as_str()])
                 .map_err(|err| MvError::Storage(err.to_string()))?;
-            match rows.next().map_err(|err| MvError::Storage(err.to_string()))? {
+            match rows
+                .next()
+                .map_err(|err| MvError::Storage(err.to_string()))?
+            {
                 Some(row) => Ok(Some(Self::row_to_identity_record(row)?)),
                 None => Ok(None),
             }
@@ -3744,7 +3757,10 @@ impl InteroperabilityStore for SqliteNodeStore {
             let mut rows = stmt
                 .query(params![governing_node_uri.as_str(), external_subject])
                 .map_err(|err| MvError::Storage(err.to_string()))?;
-            match rows.next().map_err(|err| MvError::Storage(err.to_string()))? {
+            match rows
+                .next()
+                .map_err(|err| MvError::Storage(err.to_string()))?
+            {
                 Some(row) => Ok(Some(Self::row_to_identity_record(row)?)),
                 None => Ok(None),
             }
@@ -3778,7 +3794,10 @@ impl InteroperabilityStore for SqliteNodeStore {
                     .map_err(|err| MvError::Storage(err.to_string()))?,
             };
             let mut records = Vec::new();
-            while let Some(row) = rows.next().map_err(|err| MvError::Storage(err.to_string()))? {
+            while let Some(row) = rows
+                .next()
+                .map_err(|err| MvError::Storage(err.to_string()))?
+            {
                 records.push(Self::row_to_identity_record(row)?);
             }
             Ok(records)
@@ -4437,9 +4456,7 @@ impl InteroperabilityStore for SqliteNodeStore {
                      ORDER BY o.created_at ASC, o.event_id ASC
                      LIMIT ?2",
                 )
-                .map_err(|e| {
-                    MvError::Storage(format!("prepare projection recovery query: {e}"))
-                })?;
+                .map_err(|e| MvError::Storage(format!("prepare projection recovery query: {e}")))?;
             let rows = stmt
                 .query_map(params![event_type, limit as i64], |row| {
                     row.get::<_, String>(0)
@@ -4510,9 +4527,7 @@ impl InteroperabilityStore for SqliteNodeStore {
                     checkpoint.event_id.to_string(),
                     checkpoint.node_id.to_string(),
                     checkpoint.status.as_str(),
-                    checkpoint
-                        .projected_at
-                        .map(|ts| ts.to_rfc3339()),
+                    checkpoint.projected_at.map(|ts| ts.to_rfc3339()),
                     checkpoint.error_summary,
                     checkpoint.updated_at.to_rfc3339(),
                 ],
@@ -11191,7 +11206,6 @@ fn row_to_trust_model(row: &rusqlite::Row<'_>) -> rusqlite::Result<TrustModel> {
     })
 }
 
-
 // ---------------------------------------------------------------------------
 // AdapterBindingStore (SPACE-003)
 // ---------------------------------------------------------------------------
@@ -11236,10 +11250,12 @@ impl AdapterBindingStore for SqliteNodeStore {
             let mut rows = statement
                 .query(params![id.to_string()])
                 .map_err(|err| MvError::Storage(format!("query adapter binding: {err}")))?;
-            match rows.next().map_err(|err| MvError::Storage(err.to_string()))? {
+            match rows
+                .next()
+                .map_err(|err| MvError::Storage(err.to_string()))?
+            {
                 Some(row) => Ok(Some(
-                    row_to_adapter_binding(row)
-                        .map_err(|err| MvError::Storage(err.to_string()))?,
+                    row_to_adapter_binding(row).map_err(|err| MvError::Storage(err.to_string()))?,
                 )),
                 None => Ok(None),
             }
@@ -11655,7 +11671,6 @@ fn validate_workspace_document_record(
     )?;
     checked_workspace_revision(document.revision)
 }
-
 
 const WORKSPACE_EVENT_SELECT: &str = "SELECT
     id, workspace_id, document_id, event_seq, correlation_id,
@@ -12153,9 +12168,8 @@ impl KnowledgeWorkspaceManifestStore for SqliteNodeStore {
                     row_to_workspace_event,
                 )
                 .map_err(|err| MvError::Storage(format!("list workspace events failed: {err}")))?;
-            rows.collect::<Result<Vec<_>, _>>().map_err(|err| {
-                MvError::Storage(format!("collect workspace events failed: {err}"))
-            })
+            rows.collect::<Result<Vec<_>, _>>()
+                .map_err(|err| MvError::Storage(format!("collect workspace events failed: {err}")))
         })
     }
 
@@ -12264,9 +12278,7 @@ impl KnowledgeWorkspaceManifestStore for SqliteNodeStore {
             })
         })
     }
-
 }
-
 
 #[async_trait]
 impl CollabSpaceStore for SqliteNodeStore {
@@ -12301,8 +12313,14 @@ impl CollabSpaceStore for SqliteNodeStore {
             let mut rows = statement
                 .query(params![id.to_string()])
                 .map_err(|err| MvError::Storage(format!("query collab workspace: {err}")))?;
-            match rows.next().map_err(|err| MvError::Storage(err.to_string()))? {
-                Some(row) => Ok(Some(row_to_collab_workspace(row).map_err(|err| MvError::Storage(err.to_string()))?)),
+            match rows
+                .next()
+                .map_err(|err| MvError::Storage(err.to_string()))?
+            {
+                Some(row) => Ok(Some(
+                    row_to_collab_workspace(row)
+                        .map_err(|err| MvError::Storage(err.to_string()))?,
+                )),
                 None => Ok(None),
             }
         })
@@ -12442,9 +12460,8 @@ fn parse_collab_enum<T, F>(column: usize, raw: &str, parse: F) -> rusqlite::Resu
 where
     F: FnOnce(&str) -> Result<T, String>,
 {
-    parse(raw).map_err(|err| {
-        rusqlite::Error::FromSqlConversionFailure(column, Type::Text, err.into())
-    })
+    parse(raw)
+        .map_err(|err| rusqlite::Error::FromSqlConversionFailure(column, Type::Text, err.into()))
 }
 
 fn row_to_collab_workspace(row: &rusqlite::Row<'_>) -> rusqlite::Result<CollabWorkspace> {
@@ -12511,13 +12528,10 @@ fn row_to_space_resource(row: &rusqlite::Row<'_>) -> rusqlite::Result<SpaceResou
         space_id: parse_uuid_str(1, &space_id)?,
         resource_kind: parse_collab_enum(3, &resource_kind, SpaceResourceKind::parse)?,
         resource_key: row.get(3)?,
-        owner_principal_id: owner
-            .map(|value| parse_uuid_str(4, &value))
-            .transpose()?,
+        owner_principal_id: owner.map(|value| parse_uuid_str(4, &value)).transpose()?,
         created_at: parse_dt_strict(5, &created_at)?,
     })
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -13402,14 +13416,13 @@ mod tests {
             .unwrap();
     }
 
-
     #[tokio::test]
     async fn space_authorization_matrix_persists_tenancy_and_denies_cross_space() {
         use chrono::Utc;
         use mv_core::{
-            authorize_space_operation, ActorKind, CollabSpaceStore, CollabWorkspace, IdentityRecord,
-            Space, SpaceAuthDecision, SpaceMembership, SpaceOperation, SpaceResource,
-            SpaceResourceKind, SpaceRole,
+            authorize_space_operation, ActorKind, CollabSpaceStore, CollabWorkspace,
+            IdentityRecord, Space, SpaceAuthDecision, SpaceMembership, SpaceOperation,
+            SpaceResource, SpaceResourceKind, SpaceRole,
         };
 
         let dir = tempfile::tempdir().unwrap();
@@ -13424,12 +13437,8 @@ mod tests {
         ];
         let mut principals = Vec::new();
         for (i, kind) in kinds.iter().enumerate() {
-            let record = IdentityRecord::new(
-                node_id,
-                format!("actor-{i}"),
-                *kind,
-                format!("{kind:?}"),
-            );
+            let record =
+                IdentityRecord::new(node_id, format!("actor-{i}"), *kind, format!("{kind:?}"));
             store.upsert_identity_record(&record).await.unwrap();
             principals.push(record.principal_id);
         }
@@ -13506,7 +13515,6 @@ mod tests {
             }
         }
     }
-
 
     #[tokio::test]
     async fn workspace_event_journal_survives_restart_with_correlation_and_hashes() {
@@ -13615,7 +13623,9 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(correlated.len(), 3);
-        assert!(correlated.iter().all(|event| event.correlation_id == correlation_id));
+        assert!(correlated
+            .iter()
+            .all(|event| event.correlation_id == correlation_id));
     }
 
     #[tokio::test]
@@ -13859,8 +13869,10 @@ mod tests {
         let node_id = store.local_context_node_id().await.unwrap();
 
         let human = IdentityRecord::new(node_id, "user@example.com", ActorKind::Human, "Ada");
-        let agent = IdentityRecord::new(node_id, "agent:researcher", ActorKind::Agent, "Researcher");
-        let service = IdentityRecord::new(node_id, "local-system", ActorKind::Service, "Local System");
+        let agent =
+            IdentityRecord::new(node_id, "agent:researcher", ActorKind::Agent, "Researcher");
+        let service =
+            IdentityRecord::new(node_id, "local-system", ActorKind::Service, "Local System");
         let integration =
             IdentityRecord::new(node_id, "slack:workspace", ActorKind::Integration, "Slack");
 

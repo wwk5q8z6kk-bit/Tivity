@@ -2793,9 +2793,7 @@ impl ActionEnvelope {
                 || self.work_order_id.is_some()
                 || self.agent_run_id.is_some())
         {
-            return Err(
-                "execution context fields require mindvault.action-envelope/v2".into(),
-            );
+            return Err("execution context fields require mindvault.action-envelope/v2".into());
         }
         if self.action_id.is_nil() {
             return Err("action_id is required".into());

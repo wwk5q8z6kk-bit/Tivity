@@ -4,10 +4,10 @@
 //! required gate evidence to a terminal state. No external dispatcher, provider
 //! call, or third-party agent is invoked — ADR 012 / WORK_ORDER_MODEL scope.
 
+use super::MindVaultEngine;
 use chrono::{Duration, Utc};
 use mv_core::*;
 use uuid::Uuid;
-use super::MindVaultEngine;
 /// Result of one internal execution pass.
 #[derive(Debug, Clone)]
 pub struct ExecutedRun {
@@ -168,31 +168,23 @@ impl MindVaultEngine {
             gate_results.push(result);
         }
 
-        let completed = self
-            .complete_run(run_id)
-            .await?
-            .map_err(|outstanding| {
-                MvError::Conflict(format!(
-                    "execution left outstanding gates: {}",
-                    outstanding
-                        .iter()
-                        .map(|g| g.as_str())
-                        .collect::<Vec<_>>()
-                        .join(",")
-                ))
-            })?;
+        let completed = self.complete_run(run_id).await?.map_err(|outstanding| {
+            MvError::Conflict(format!(
+                "execution left outstanding gates: {}",
+                outstanding
+                    .iter()
+                    .map(|g| g.as_str())
+                    .collect::<Vec<_>>()
+                    .join(",")
+            ))
+        })?;
 
         // North-star input metric: Weekly Accepted Trusted Works (WATW) uses
         // completed governed Engine runs with passing required gates as the
         // interim proxy until a separate human-acceptance UI lands.
+        self.metrics.increment("trusted_work_completed", 1).await;
         self.metrics
-            .increment("trusted_work_completed", 1)
-            .await;
-        self.metrics
-            .record_histogram(
-                "trusted_work_gate_count",
-                gate_results.len() as f64,
-            )
+            .record_histogram("trusted_work_gate_count", gate_results.len() as f64)
             .await;
         tracing::info!(
             target: "mindvault::watw",
@@ -335,4 +327,3 @@ impl MindVaultEngine {
         .await
     }
 }
-

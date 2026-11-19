@@ -3,11 +3,11 @@ pub mod audit;
 pub mod auth;
 pub mod email;
 pub mod grpc;
+pub mod inbox_consumer;
 pub mod limits;
 pub mod metrics;
 pub mod openapi;
 pub mod outbox_dispatch;
-pub mod inbox_consumer;
 pub mod rest;
 pub mod state;
 pub mod validation;
@@ -152,7 +152,6 @@ pub async fn start_server(config: ServerConfig) -> ServerResult {
 
     // Spawn watcher agent with notification forwarding
     let state = Arc::new(AppState::new_with_channels(engine, change_tx, agent_tx));
-
 
     let rest_state = Arc::clone(&state);
     let ws_state = Arc::clone(&state);

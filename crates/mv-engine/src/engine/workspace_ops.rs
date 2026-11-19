@@ -3,10 +3,9 @@ use std::path::{Path, PathBuf};
 
 use mv_core::{
     KnowledgeWorkspace, KnowledgeWorkspaceManifestStore, KnowledgeWorkspaceMode,
-    KnowledgeWorkspaceState, MvError, MvResult, WorkspaceConflict,
-    WorkspaceConflictPayloadV1, WorkspaceDescriptorPayloadV1, WorkspaceEvent,
-    WorkspaceEventActorKind, WorkspaceEventOperation, WorkspaceEventPayloadV1,
-    WorkspaceManifestPayloadFormat, WORKSPACE_CONFLICT_RESOLUTIONS,
+    KnowledgeWorkspaceState, MvError, MvResult, WorkspaceConflict, WorkspaceConflictPayloadV1,
+    WorkspaceDescriptorPayloadV1, WorkspaceEvent, WorkspaceEventActorKind, WorkspaceEventOperation,
+    WorkspaceEventPayloadV1, WorkspaceManifestPayloadFormat, WORKSPACE_CONFLICT_RESOLUTIONS,
 };
 use uuid::Uuid;
 
@@ -273,7 +272,9 @@ impl MindVaultEngine {
         let relative = PathBuf::from(&read.relative_path);
         let absolute = root.join(&relative);
         let before = std::fs::read(&absolute).map_err(|err| {
-            MvError::Storage(format!("canonical document unavailable for conflict proof: {err}"))
+            MvError::Storage(format!(
+                "canonical document unavailable for conflict proof: {err}"
+            ))
         })?;
 
         let payload = WorkspaceConflictPayloadV1::stale_write(
@@ -284,10 +285,15 @@ impl MindVaultEngine {
         );
         let conflict = WorkspaceConflict::open_stale_write(workspace.id, document.id, payload)
             .map_err(|err| MvError::InvalidInput(format!("conflict payload: {err}")))?;
-        self.store.nodes.insert_workspace_conflict(&conflict).await?;
+        self.store
+            .nodes
+            .insert_workspace_conflict(&conflict)
+            .await?;
 
         let after = std::fs::read(&absolute).map_err(|err| {
-            MvError::Storage(format!("canonical document unavailable after conflict: {err}"))
+            MvError::Storage(format!(
+                "canonical document unavailable after conflict: {err}"
+            ))
         })?;
         if before != after {
             return Err(MvError::Internal(
@@ -309,9 +315,7 @@ impl MindVaultEngine {
             .list_workspace_conflicts(workspace.id, open_only)
             .await
     }
-
 }
-
 
 impl MindVaultEngine {
     pub(crate) async fn journal_workspace_phase(
@@ -343,7 +347,6 @@ impl MindVaultEngine {
         self.store.nodes.append_workspace_event(&event).await
     }
 }
-
 
 fn canonical_workspace_root(root: &Path) -> MvResult<PathBuf> {
     let canonical = fs::canonicalize(root)
@@ -536,7 +539,9 @@ mod tests {
             .get_knowledge_workspace(mounted.workspace.id)
             .await
             .unwrap();
-        mark_initial_workspace_error(&engine, &before).await.unwrap();
+        mark_initial_workspace_error(&engine, &before)
+            .await
+            .unwrap();
         let after = engine
             .get_knowledge_workspace(mounted.workspace.id)
             .await

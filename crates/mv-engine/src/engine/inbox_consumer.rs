@@ -64,8 +64,7 @@ impl InboxConsumerConfig {
             interval_secs: 5,
             lease_secs: 30,
             batch_limit: 32,
-            consumer: StableUri::parse("mindvault://consumers/local-index")
-                .expect("consumer URI"),
+            consumer: StableUri::parse("mindvault://consumers/local-index").expect("consumer URI"),
             processor: StableUri::parse("mindvault://processors/local-index")
                 .expect("processor URI"),
         }

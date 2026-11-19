@@ -1119,7 +1119,11 @@ mod tests {
             make_inbound("m2", "boom"),
             make_inbound("m3", "never"),
         ];
-        let adapter = Arc::new(PollableMockAdapter::new("partial-fail", messages, "cursor-2"));
+        let adapter = Arc::new(PollableMockAdapter::new(
+            "partial-fail",
+            messages,
+            "cursor-2",
+        ));
         registry.register(config, adapter).await;
 
         let store = MockPollStore::with_cursor("partial-fail", "cursor-1");
@@ -1144,5 +1148,4 @@ mod tests {
         let seen = seen.lock().unwrap();
         assert_eq!(seen.as_slice(), ["ok", "boom"]);
     }
-
 }

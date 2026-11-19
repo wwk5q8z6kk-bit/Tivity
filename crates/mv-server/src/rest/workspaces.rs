@@ -205,7 +205,6 @@ pub(crate) async fn read_workspace_document(
     Ok(Json(document))
 }
 
-
 #[derive(Debug, Serialize)]
 pub(crate) struct WorkspaceConflictView {
     id: Uuid,
@@ -249,9 +248,11 @@ pub(crate) async fn list_workspace_conflicts(
     }))
 }
 
-fn conflict_view(conflict: WorkspaceConflict) -> Result<WorkspaceConflictView, (StatusCode, String)> {
-    let payload: mv_core::WorkspaceConflictPayloadV1 = serde_json::from_slice(&conflict.conflict_payload)
-        .map_err(|err| {
+fn conflict_view(
+    conflict: WorkspaceConflict,
+) -> Result<WorkspaceConflictView, (StatusCode, String)> {
+    let payload: mv_core::WorkspaceConflictPayloadV1 =
+        serde_json::from_slice(&conflict.conflict_payload).map_err(|err| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("conflict payload is not valid JSON: {err}"),
@@ -345,7 +346,6 @@ fn map_workspace_error(error: MvError) -> (StatusCode, String) {
     (status, error.to_string())
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -367,9 +367,8 @@ mod tests {
         config.embedding.provider = "noop".into();
         config.llm.auto_detect = false;
         let engine = MindVaultEngine::init(config).await.unwrap();
-        let state = Arc::new(
-            AppState::new(Arc::new(engine)).with_workspace_allowed_roots(allowed_roots),
-        );
+        let state =
+            Arc::new(AppState::new(Arc::new(engine)).with_workspace_allowed_roots(allowed_roots));
         (state, tmp)
     }
 

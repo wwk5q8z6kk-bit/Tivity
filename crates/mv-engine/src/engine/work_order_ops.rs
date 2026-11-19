@@ -2463,12 +2463,7 @@ mod tests {
         let mut rule = AutonomyRule::global(0.0);
         rule.allowed_intent_types = vec!["work_order.run.engine".into()];
         rule.max_actions_per_hour = 100;
-        engine
-            .store
-            .nodes
-            .add_autonomy_rule(&rule)
-            .await
-            .unwrap();
+        engine.store.nodes.add_autonomy_rule(&rule).await.unwrap();
 
         let admitted = engine
             .admit_work_order(
@@ -2505,7 +2500,10 @@ mod tests {
         assert_eq!(executed.artifact.artifact_kind, "engine.result");
         assert!(!executed.artifact.content_digest.is_empty());
         assert!(!executed.artifact.provenance.is_empty());
-        assert_eq!(executed.gate_results.len(), RiskTier::Low.required_gates().len());
+        assert_eq!(
+            executed.gate_results.len(),
+            RiskTier::Low.required_gates().len()
+        );
         assert!(executed
             .gate_results
             .iter()
@@ -2851,7 +2849,8 @@ mod tests {
     async fn work_order_admit_embeds_action_envelope_v2_in_event() {
         let (engine, _dir) = test_engine().await;
         let local_node_id = register_local_node(&engine).await;
-        let actor = StableUri::principal(local_node_id, Uuid::new_v5(&local_node_id, b"wo-envelope"));
+        let actor =
+            StableUri::principal(local_node_id, Uuid::new_v5(&local_node_id, b"wo-envelope"));
         issue_tool_grant(
             &engine,
             local_node_id,
@@ -2910,7 +2909,7 @@ mod tests {
                         risk_tier: RiskTier::Low,
                         read_scope: Vec::new(),
                         write_scope: vec![
-                            StableUri::parse("mindvault://schemas/executable").unwrap(),
+                            StableUri::parse("mindvault://schemas/executable").unwrap()
                         ],
                         inputs: Vec::new(),
                         timeout_secs: 30,
@@ -2938,10 +2937,7 @@ mod tests {
             .data
             .get("action_envelope")
             .expect("action_envelope metadata");
-        assert_eq!(
-            action_envelope["envelope_version"],
-            ACTION_ENVELOPE_V2
-        );
+        assert_eq!(action_envelope["envelope_version"], ACTION_ENVELOPE_V2);
         assert_eq!(
             action_envelope["work_order_id"],
             serde_json::json!(admitted.work_order_id)
@@ -2961,5 +2957,4 @@ mod tests {
         assert!(!AgentRunStatus::AwaitingApproval.can_transition_to(AgentRunStatus::Running));
         assert!(!AgentRunStatus::AwaitingApproval.may_hold_write_leases());
     }
-
 }
