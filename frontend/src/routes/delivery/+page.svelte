@@ -1,9 +1,14 @@
 <script lang="ts">
+	import ShareTask from './ShareTask.svelte';
+	import { isTaskShare, type TaskShare } from './task-share';
+	import SharedTaskDiscussions from './SharedTaskDiscussions.svelte';
 	import { ApiError } from '$lib/api/client';
 	import { saveSourceNode } from '$lib/api/source-import';
 	import { activeNamespace } from '$lib/stores/namespace';
 	import { excerptRequest, isExcerpt, type DiscussionExcerpt } from './comment';
 
+	let showShared = false;
+	let share: TaskShare | null = null;
 	let frame: HTMLIFrameElement;
 	let excerpt: DiscussionExcerpt | null = null;
 	let busy = false;
@@ -15,13 +20,15 @@
 	let destination: string | null = null;
 
 	function receive(event: MessageEvent) {
-		if (
-			busy ||
-			event.origin !== location.origin ||
-			event.source !== frame?.contentWindow ||
-			!isExcerpt(event.data)
-		)
+		if (busy || share || event.origin !== location.origin || event.source !== frame?.contentWindow)
 			return;
+		if (isTaskShare(event.data)) {
+			share = event.data;
+			excerpt = null;
+			message = '';
+			return;
+		}
+		if (!isExcerpt(event.data)) return;
 		excerpt = event.data;
 		kind = 'reference';
 		title = excerpt.taskTitle;
@@ -61,6 +68,16 @@
 </script>
 
 <svelte:window on:message={receive} />
+{#if share}
+	<ShareTask
+		request={share}
+		initialNamespace={$activeNamespace ?? 'default'}
+		on:close={(event) => {
+			share = null;
+			message = event.detail;
+		}}
+	/>
+{/if}
 {#if excerpt}
 	<section class="rounded border p-4" aria-label="Review discussion excerpt">
 		<h2>Save discussion excerpt to {destination ?? 'the default namespace'}?</h2>
@@ -104,6 +121,16 @@
 	</section>
 {/if}
 {#if message}<p role="status">{message}</p>{/if}
+<button
+	class="my-2 rounded border px-3 py-1"
+	aria-expanded={showShared}
+	on:click={() => (showShared = !showShared)}>Shared task discussions</button
+>
+{#if showShared}
+	{#key $activeNamespace}<SharedTaskDiscussions
+			initialNamespace={$activeNamespace ?? 'default'}
+		/>{/key}
+{/if}
 <iframe
 	title="Tivity delivery workspace"
 	bind:this={frame}

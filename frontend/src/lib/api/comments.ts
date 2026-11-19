@@ -1,4 +1,4 @@
-import { fetchJson } from './client';
+import { bearerHeaders, fetchJson } from './client';
 
 export interface NodeComment {
 	id: string;
@@ -12,36 +12,50 @@ export interface NodeComment {
 
 export async function listNodeComments(
 	nodeId: string,
-	includeResolved = false
+	includeResolved = false,
+	token = ''
 ): Promise<NodeComment[]> {
 	const params = new URLSearchParams();
 	if (includeResolved) params.set('include_resolved', 'true');
 	const suffix = params.toString();
-	return fetchJson<NodeComment[]>(
-		`/api/v1/nodes/${nodeId}/comments${suffix ? `?${suffix}` : ''}`
-	);
+	return fetchJson<NodeComment[]>(`/api/v1/nodes/${nodeId}/comments${suffix ? `?${suffix}` : ''}`, {
+		headers: bearerHeaders(token)
+	});
 }
 
-export async function createNodeComment(payload: {
-	node_id: string;
-	body: string;
-	author?: string;
-}): Promise<NodeComment> {
+export async function createNodeComment(
+	payload: {
+		node_id: string;
+		body: string;
+		author?: string;
+	},
+	token = ''
+): Promise<NodeComment> {
 	return fetchJson<NodeComment>(`/api/v1/nodes/${payload.node_id}/comments`, {
 		method: 'POST',
+		headers: bearerHeaders(token),
 		body: JSON.stringify({ body: payload.body, author: payload.author })
 	});
 }
 
-export async function resolveNodeComment(nodeId: string, commentId: string): Promise<NodeComment> {
-	return fetchJson<NodeComment>(
-		`/api/v1/nodes/${nodeId}/comments/${commentId}/resolve`,
-		{ method: 'PUT' }
-	);
+export async function resolveNodeComment(
+	nodeId: string,
+	commentId: string,
+	token = ''
+): Promise<NodeComment> {
+	return fetchJson<NodeComment>(`/api/v1/nodes/${nodeId}/comments/${commentId}/resolve`, {
+		method: 'PUT',
+		headers: bearerHeaders(token)
+	});
 }
 
-export async function deleteNodeComment(nodeId: string, commentId: string): Promise<NodeComment> {
+export async function deleteNodeComment(
+	nodeId: string,
+	commentId: string,
+	token = ''
+): Promise<NodeComment> {
 	return fetchJson<NodeComment>(`/api/v1/nodes/${nodeId}/comments/${commentId}`, {
-		method: 'DELETE'
+		method: 'DELETE',
+		headers: bearerHeaders(token)
 	});
 }
