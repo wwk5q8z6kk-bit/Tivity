@@ -5,8 +5,8 @@
 	"version": "0.0.1",
 	"type": "module",
 	"scripts": {
-		"dev": "vite dev",
-		"build": "vite build",
+		"dev": "pnpm build:delivery && vite dev",
+		"build": "pnpm build:delivery && vite build",
 		"preview": "vite preview",
 		"tauri": "tauri",
 		"tauri:dev": "tauri dev",
@@ -18,7 +18,8 @@
 		"format": "prettier --write .",
 		"test:unit": "vitest",
 		"test": "npm run test:unit -- --run && npm run test:e2e",
-		"test:e2e": "playwright test"
+		"test:e2e": "playwright test",
+		"build:delivery": "pnpm --dir ../delivery --filter @tivity/desktop exec vite build --base ./ --outDir ../../../frontend/static/delivery-ui --emptyOutDir"
 	},
 	"devDependencies": {
 		"@eslint/compat": "^2.0.1",

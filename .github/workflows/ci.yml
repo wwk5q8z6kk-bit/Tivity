@@ -20,7 +20,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
 
@@ -28,13 +28,28 @@ jobs:
         working-directory: frontend
         run: pnpm install --frozen-lockfile
 
+      - name: Install delivery dependencies
+        working-directory: delivery
+        run: pnpm install --frozen-lockfile
+
       - name: Frontend type check
         working-directory: frontend
         run: pnpm check
 
-      - name: Frontend production build
+      - name: Check delivery workspace
+        working-directory: delivery
+        run: |
+          pnpm typecheck
+          pnpm typecheck:e2e
+          pnpm test
+
+      - name: Install Chromium
         working-directory: frontend
-        run: pnpm build
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Build and test combined workspace
+        working-directory: frontend
+        run: pnpm exec playwright test delivery.spec.ts
 
   rust:
     runs-on: ubuntu-latest

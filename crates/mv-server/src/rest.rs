@@ -950,6 +950,7 @@ fn build_cors_layer(cors_allowed_origins: &[String]) -> CorsLayer {
         .allow_headers([
             axum::http::header::CONTENT_TYPE,
             axum::http::header::AUTHORIZATION,
+            axum::http::HeaderName::from_static(IDEMPOTENCY_KEY_HEADER),
         ])
         .allow_origin(parsed)
 }

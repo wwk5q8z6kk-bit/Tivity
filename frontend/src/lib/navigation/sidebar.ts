@@ -64,6 +64,7 @@ export const sidebarNavigationGroups: SidebarNavigationGroup[] = [
 		collapsible: true,
 		items: [
 			{ label: 'Tasks', href: '/tasks', viewPreferenceKey: 'tasks' },
+			{ label: 'Delivery', href: '/delivery' },
 			{ label: 'Goals', href: '/goals' }
 		]
 	},

@@ -1,3 +1,23 @@
+# Tivity
+
+Tivity brings project delivery and the MindVault knowledge workspace into one application. Open **Work → Delivery** for projects, issues, requirements, and releases. To carry a decision from a task into the vault, post a comment, select **Review for vault**, then choose **Save reference**. A saved reference records the source project, task, comment, timestamp, and display author. Saving requires access to the vault server.
+
+## Run the combined web app
+
+Use Node 24 and pnpm 10. From the repository root run:
+
+```sh
+pnpm --dir delivery install --frozen-lockfile
+pnpm --dir frontend install --frozen-lockfile
+pnpm --dir frontend dev
+```
+
+The frontend command builds the embedded delivery workspace before starting Vite. Restart it after editing delivery code. Use `pnpm --dir frontend build` for the combined static distribution. Vault features connect to the existing MindVault API on port 9470 by default. Server setup follows below.
+
+The browser delivery workspace uses local storage on the app's origin. Existing standalone browser profiles and desktop SQLite databases stay at their original locations. The review action copies one selected comment into the chosen vault namespace. Team synchronization and a bulk migration of existing delivery records are still pending.
+
+## MindVault foundation
+
 # MindVault
 
 MindVault is evolving from a local-first knowledge memory system into a

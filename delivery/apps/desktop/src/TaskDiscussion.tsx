@@ -53,6 +53,20 @@ export function TaskDiscussion({ store, task }: { store: Store; task: Task }) {
                 <time dateTime={new Date(comment.createdAt).toISOString()}>{new Date(comment.createdAt).toLocaleString()}</time>
               </div>
               <p>{comment.body}</p>
+              {window.parent !== window && window.location.pathname.startsWith('/delivery-ui/') && (
+                <button type="button" className="ghost" onClick={() => {
+                  window.parent.postMessage({
+                    type: 'tivity.review-comment.v1',
+                    taskTitle: task.title,
+                    projectId: task.projectId,
+                    taskId: task.id,
+                    commentId: comment.id,
+                    author: comment.author,
+                    body: comment.body,
+                    createdAt: comment.createdAt,
+                  }, window.location.origin);
+                }}>Review for vault</button>
+              )}
             </li>
           ))}
         </ol>

@@ -55,13 +55,18 @@
 	const routeMeta: Array<{ href: string; title: string; subtitle: string }> = [
 		{
 			href: '/onboarding',
-			title: 'Welcome to MindVault',
+			title: 'Welcome to Tivity',
 			subtitle: 'Set up your private, local-first Personal Vault.'
 		},
 		{
 			href: '/plan',
 			title: 'Smart Daily Planner',
 			subtitle: 'AI-powered daily planning with priorities and focus blocks.'
+		},
+		{
+			href: '/delivery',
+			title: 'Project delivery',
+			subtitle: 'Projects, issues, discussions, and release evidence.'
 		},
 		{
 			href: '/tasks',
@@ -240,7 +245,7 @@
 		},
 		{
 			href: '/',
-			title: 'MindVault',
+			title: 'Tivity',
 			subtitle: 'Local-first knowledge and execution workspace.'
 		}
 	];
@@ -313,7 +318,7 @@
 <svelte:window on:keydown={handleGlobalKeydown} />
 
 <svelte:head>
-	<title>MindVault</title>
+	<title>Tivity</title>
 </svelte:head>
 
 <div
@@ -331,7 +336,7 @@
 					<div class="absolute inset-0 rounded-xl ring-1 ring-inset ring-white/20"></div>
 				</div>
 				<div class="flex flex-col">
-					<span class="font-bold text-lg leading-tight tracking-tight">MindVault</span>
+					<span class="font-bold text-lg leading-tight tracking-tight">Tivity</span>
 					<span
 						class="text-[10px] uppercase tracking-wider font-semibold text-[rgb(var(--mv-muted))] opacity-80"
 						>Personal Vault</span
@@ -540,7 +545,7 @@
 							<span class="font-bold">MV</span>
 						</div>
 						<div class="flex flex-col">
-							<span class="font-bold text-lg leading-tight">MindVault</span>
+							<span class="font-bold text-lg leading-tight">Tivity</span>
 							<span
 								class="text-[10px] uppercase tracking-wider font-semibold text-[rgb(var(--mv-muted))]"
 								>Personal Vault</span
