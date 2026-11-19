@@ -158,3 +158,48 @@ test('shares a selected board task only after review and reuses its import ident
 			.digest('hex')
 	);
 });
+
+test('reviews a changed vault status and rejects a stale board revision', async ({ page }) => {
+	let node: Record<string, any> | null = null;
+	await page.route('**/api/v1/**', async (route) => {
+		const req = route.request();
+		const path = new URL(req.url()).pathname;
+		if (path === '/api/v1/nodes' && req.method() === 'POST') {
+			node = { ...req.postDataJSON(), id: 'shared' };
+			await route.fulfill({ json: node });
+		} else if (path === '/api/v1/nodes/shared') {
+			expect(req.headers().authorization).toBe('Bearer writer');
+			await route.fulfill({
+				json: { ...node, metadata: { ...node?.metadata, task_status: 'done' } }
+			});
+		} else await route.fulfill({ json: path === '/api/v1/nodes' && node ? [node] : [] });
+	});
+	await page.goto('/delivery');
+	const frame = page.frameLocator('iframe[title="Tivity delivery workspace"]');
+	const title = 'Connect your first docs and tasks with links';
+	await frame.getByRole('button', { name: title, exact: true }).click();
+	await frame.getByRole('button', { name: 'Share task with vault' }).click();
+	await page
+		.getByRole('form', { name: 'Review task for sharing' })
+		.getByRole('button', { name: 'Share task', exact: true })
+		.click();
+	await page.getByRole('button', { name: 'Shared task discussions' }).click();
+	const panel = page.getByRole('region', { name: 'Shared task discussions' });
+	await panel.getByLabel('Vault access token').fill('writer');
+	await panel.getByRole('button', { name: 'Load tasks' }).click();
+	const compare = panel.getByRole('button', { name: 'Review status on board' });
+	await compare.click();
+	const review = frame.getByRole('region', { name: 'Vault status review' });
+	await expect(review.getByRole('heading')).toHaveText(title);
+	const inspector = frame.getByRole('complementary', { name: 'Selected task' });
+	// Change the local task while the review remains open.
+	await inspector.locator('button.ghost').first().click();
+	await expect(inspector.locator('p .pill')).toHaveClass(/doing/);
+	await review.getByRole('button', { name: 'Apply vault status' }).click();
+	await expect(review.getByRole('status')).toContainText('board changed');
+	await compare.click();
+	await review.getByRole('button', { name: 'Apply vault status' }).click();
+	await expect(review.getByRole('status')).toHaveText('Board status updated.');
+	await compare.click();
+	await expect(review.getByRole('status')).toContainText('same status');
+});
