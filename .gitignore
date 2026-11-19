@@ -6,3 +6,5 @@ out/
 .DS_Store
 *.log
 apps/*/src-tauri/target/
+playwright-report/
+test-results/

@@ -4,6 +4,7 @@ import { z } from 'zod';
 import type { Store } from '@tivity/core';
 import { openIdeStore } from './db';
 import {
+  addTaskCommentOp,
   createTaskOp,
   impactOp,
   listProjectsOp,
@@ -11,6 +12,7 @@ import {
   searchOp,
   setTaskStatusOp,
   tasksOp,
+  taskCommentsOp,
 } from './ops';
 
 // MCP stdio server: exposes Tivity to IDE agents (Copilot, Cursor, Claude
@@ -149,6 +151,30 @@ export function createTivityServer(store: Store, defaultProject?: string): McpSe
       }
     },
   );
+
+  server.registerTool('tivity_task_comments', {
+    description: 'Read the persistent discussion on a task, oldest first.',
+    inputSchema: {
+      project: z.string().optional().describe(PROJECT_ARG),
+      taskId: z.string().describe('Task id from tivity_tasks.'),
+    },
+  }, async ({ project, taskId }) => {
+    try { return text(await taskCommentsOp(store, proj(project), taskId)); }
+    catch (err) { return failure(err); }
+  });
+
+  server.registerTool('tivity_add_task_comment', {
+    description: 'Post a comment to a task discussion. Author is a display label, not verified identity.',
+    inputSchema: {
+      project: z.string().optional().describe(PROJECT_ARG),
+      taskId: z.string().describe('Task id from tivity_tasks.'),
+      author: z.string().describe('Your display name or agent name.'),
+      body: z.string().describe('Comment text.'),
+    },
+  }, async ({ project, taskId, author, body }) => {
+    try { return text(await addTaskCommentOp(store, proj(project), taskId, author, body)); }
+    catch (err) { return failure(err); }
+  });
 
   return server;
 }

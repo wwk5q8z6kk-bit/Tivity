@@ -48,6 +48,16 @@ export interface Doc {
   updatedAt: number;
 }
 
+export interface TaskComment {
+  id: string;
+  projectId: string;
+  taskId: string;
+  /** Display attribution only; authenticated identities are a future layer. */
+  author: string;
+  body: string;
+  createdAt: number;
+}
+
 export interface Decision {
   id: string;
   projectId: string;

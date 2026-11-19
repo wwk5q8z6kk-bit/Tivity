@@ -1,6 +1,11 @@
 # Vector opener on Node
 
-FTS stays the lexical path. TauriStore can blend optional vector candidates into search. The MCP / IDE opener tries to load sqlite-vec when the package is present, indexes title text with a local bag-of-words embedding, and falls back cleanly when the extension cannot load. The browser and Tauri shell keep FTS-only search until those openers support extensions.
+Status (2026-11-19): planned, not implemented. The rank-blend helper and
+sqlite-vec dependency exist, but TauriStore and the MCP / IDE opener do not
+use them. All current surfaces use lexical search. The files below describe
+proposed work, not shipped behavior. See
+[the open source roadmap](docs/open-source-roadmap.md#search-implementation-gap)
+for the completion criteria and prioritized follow-up work.
 
 ## Files
 

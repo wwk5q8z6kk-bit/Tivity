@@ -8,10 +8,17 @@
     "dev": "pnpm --filter @tivity/desktop dev",
     "build": "pnpm --filter @tivity/desktop build",
     "preview": "pnpm --filter @tivity/desktop preview",
+    "test:e2e": "playwright test",
+    "typecheck:e2e": "tsc --project tsconfig.e2e.json",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm --filter @tivity/core --filter @tivity/github-sync --filter @tivity/agent-runtime --filter @tivity/ide-client --filter ./apps/vscode-tivity test",
     "tauri": "pnpm --filter @tivity/desktop tauri",
     "tauri:dev": "pnpm --filter @tivity/desktop tauri:dev",
     "tauri:build": "pnpm --filter @tivity/desktop tauri:build"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.65.1",
+    "@types/node": "^26.6.6",
+    "typescript": "~5.8.3"
   }
 }

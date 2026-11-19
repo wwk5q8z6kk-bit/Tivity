@@ -55,6 +55,16 @@ export async function createTaskOp(store: Store, projectRef: string | undefined,
   return store.createTask(await resolveProjectId(store, projectRef), title.trim());
 }
 
+export async function taskCommentsOp(store: Store, projectRef: string | undefined, taskId: string) {
+  return store.listTaskComments(await resolveProjectId(store, projectRef), taskId);
+}
+
+export async function addTaskCommentOp(
+  store: Store, projectRef: string | undefined, taskId: string, author: string, body: string,
+) {
+  return store.addTaskComment(await resolveProjectId(store, projectRef), taskId, { author, body });
+}
+
 export async function setTaskStatusOp(
   store: Store,
   projectRef: string | undefined,

@@ -33,6 +33,8 @@ export const TIVITY_MCP_TOOLS = [
   'tivity_set_task_status',
   'tivity_record_memory',
   'tivity_impact',
+  'tivity_task_comments',
+  'tivity_add_task_comment',
 ] as const;
 
 export function tivityMcpServer(repoRoot = '<tivity>'): { command: string; args: string[] } {
@@ -58,12 +60,12 @@ export function referenceMcpServers(): Record<string, { command: string; args: s
       args: ['-y', '@modelcontextprotocol/server-filesystem', '<workspace>'],
     },
     git: {
-      command: 'npx',
-      args: ['-y', '@modelcontextprotocol/server-git', '--repository', '<workspace>'],
+      command: 'uvx',
+      args: ['mcp-server-git', '--repository', '<workspace>'],
     },
     fetch: {
-      command: 'npx',
-      args: ['-y', '@modelcontextprotocol/server-fetch'],
+      command: 'uvx',
+      args: ['mcp-server-fetch'],
     },
   };
 }
@@ -137,7 +139,7 @@ export const CONNECTORS: readonly Connector[] = [
     name: 'Tivity MCP',
     stance: 'built-in',
     license: 'this-app',
-    summary: 'This app is the server. Cursor, Copilot, and Claude Code call seven tools over stdio and write the same database.',
+    summary: 'This app is the server. Cursor, Copilot, and Claude Code call nine tools over stdio, including task discussions, and write the same database.',
     where: 'packages/ide-client',
     how: 'Register tivity-mcp in the agent client. The desktop app does not need to embed those agents.',
     configKind: 'mcp-json',
@@ -149,7 +151,7 @@ export const CONNECTORS: readonly Connector[] = [
     license: 'this-app',
     summary: 'One client config: Tivity plus filesystem, git, and fetch reference servers.',
     where: 'packages/core/src/connectors.ts',
-    how: 'Paste into Cursor or any MCP host. Replace <tivity> and <workspace> with real paths.',
+    how: 'Build Tivity MCP first with pnpm --filter @tivity/ide-client build. Install Node (node/npx) and uv (uvx). Paste into a client that uses mcpServers, and replace <tivity> and <workspace> with real paths.',
     configKind: 'mcp-json',
   },
   {
@@ -184,9 +186,9 @@ export const CONNECTORS: readonly Connector[] = [
     name: 'Buzz',
     stance: 'attach',
     license: 'Apache-2.0',
-    summary: 'A workspace where people and agents share rooms on a relay you own. It is a neighbor, not a dependency.',
+    summary: 'An optional bridge for teams moving from Buzz by Block. Tivity is building native collaboration alongside its issue and knowledge records.',
     where: '/Users/x/Projects/GitHub/buzz',
-    how: 'Keep Buzz running beside Tivity. Its agents call tivity-mcp when they need the project record. Do not import the Rust relay into this bundle.',
+    how: 'During migration, Buzz agents can use tivity-mcp to read tasks and join task discussions. Native Tivity discussion works without Buzz. The relay remains a separate process when used.',
     configKind: 'plain',
   },
   {
@@ -206,7 +208,7 @@ export const CONNECTORS: readonly Connector[] = [
     license: 'MIT+Apache-2.0',
     summary: 'Filesystem, git, and fetch servers maintained with the protocol. New code is Apache-2.0. Older files remain MIT.',
     where: 'https://github.com/modelcontextprotocol/servers',
-    how: 'Add the server you need next to tivity in the same MCP client config. They are reference servers, so treat them as examples you run on purpose.',
+    how: 'Install Node for filesystem (npx) and uv for Git and Fetch (uvx). Replace <workspace> with the directory to expose. Add the server you need next to Tivity in your MCP client config; these are reference implementations.',
     configKind: 'mcp-json',
   },
   {

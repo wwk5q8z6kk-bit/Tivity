@@ -7,10 +7,29 @@ import {
   attachable,
   buzzAttachNote,
   connectorConfig,
+  referenceMcpServers,
   tivityMcpConfig,
 } from './connectors';
 
 describe('connector catalog', () => {
+  it('uses the official Node and Python launchers for reference servers', () => {
+    const servers = referenceMcpServers();
+    expect(servers.filesystem).toEqual({
+      command: 'npx',
+      args: ['-y', '@modelcontextprotocol/server-filesystem', '<workspace>'],
+    });
+    expect(servers.git).toEqual({
+      command: 'uvx',
+      args: ['mcp-server-git', '--repository', '<workspace>'],
+    });
+    expect(servers.fetch).toEqual({ command: 'uvx', args: ['mcp-server-fetch'] });
+    const bundle = JSON.parse(attachMcpBundle('/a path/Tivity'));
+    expect(bundle.mcpServers.git).toEqual(servers.git);
+    expect(bundle.mcpServers.fetch).toEqual(servers.fetch);
+    const reference = CONNECTORS.find((c) => c.id === 'mcp-reference')!;
+    expect(JSON.parse(connectorConfig(reference)!)).toEqual({ mcpServers: servers });
+  });
+
   it('attaches only permissive neighbors and holds the rest', () => {
     const attach = CONNECTORS.filter((c) => c.stance === 'attach');
     expect(attach.map((c) => c.id)).toEqual(['buzz', 'agentkit', 'mcp-reference', 'sqlite-vec']);
@@ -19,8 +38,8 @@ describe('connector catalog', () => {
     expect(held.every((c) => c.license === 'unspecified' && !attachable(c))).toBe(true);
   });
 
-  it('names the seven MCP tools and a client config that points at this repo', () => {
-    expect(TIVITY_MCP_TOOLS).toHaveLength(7);
+  it('names the nine MCP tools and a client config that points at this repo', () => {
+    expect(TIVITY_MCP_TOOLS).toHaveLength(9);
     const config = JSON.parse(tivityMcpConfig('/src/Tivity')) as {
       mcpServers: { tivity: { command: string; args: string[] } };
     };

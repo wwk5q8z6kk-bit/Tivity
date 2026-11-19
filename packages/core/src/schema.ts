@@ -52,6 +52,15 @@ export const MIGRATIONS: string[] = [
     created_at INTEGER NOT NULL
   )`,
   `CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks (project_id)`,
+  `CREATE TABLE IF NOT EXISTS task_comments (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    author TEXT NOT NULL,
+    body TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_task_comments_thread ON task_comments (project_id, task_id, created_at)`,
   `CREATE INDEX IF NOT EXISTS idx_docs_project ON docs (project_id)`,
   `CREATE INDEX IF NOT EXISTS idx_decisions_project ON decisions (project_id)`,
   `CREATE INDEX IF NOT EXISTS idx_memory_project ON memory_entries (project_id)`,

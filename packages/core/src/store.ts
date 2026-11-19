@@ -1,4 +1,4 @@
-import type { Agent, AgentRun, Decision, DesignComponent, Doc, EvidenceItem, ExternalRef, ImpactItem, Job, Link, MemoryEntry, Milestone, MonitorCheck, Project, PullRequest, QualityGate, Release, Requirement, RequirementVersion, Screen, SecurityFinding, Sprint, SyncState, Task, TestCase, TestRun } from './types';
+import type { Agent, AgentRun, Decision, DesignComponent, Doc, EvidenceItem, ExternalRef, ImpactItem, Job, Link, MemoryEntry, Milestone, MonitorCheck, Project, PullRequest, QualityGate, Release, Requirement, RequirementVersion, Screen, SecurityFinding, Sprint, SyncState, Task, TaskComment, TestCase, TestRun } from './types';
 import { MIGRATIONS } from './schema';
 import { findImpacted } from './links';
 import {
@@ -24,6 +24,8 @@ export interface Store {
   listTasks(projectId: string): Promise<Task[]>;
   createTask(projectId: string, title: string): Promise<Task>;
   setTaskStatus(id: string, status: Task['status']): Promise<void>;
+  listTaskComments(projectId: string, taskId: string): Promise<TaskComment[]>;
+  addTaskComment(projectId: string, taskId: string, input: { author: string; body: string }): Promise<TaskComment>;
   listDocs(projectId: string): Promise<Doc[]>;
   createDoc(projectId: string, title: string, body?: string): Promise<Doc>;
   listDecisions(projectId: string): Promise<Decision[]>;
@@ -113,6 +115,7 @@ function newestFirst<T extends { createdAt: number }>(items: T[]): T[] {
 
 interface ProjectRow { id: string; name: string; summary: string; status: string; created_at: number; updated_at: number }
 interface TaskRow { id: string; project_id: string; title: string; status: string; created_at: number; updated_at: number }
+interface TaskCommentRow { id: string; project_id: string; task_id: string; author: string; body: string; created_at: number }
 interface DocRow { id: string; project_id: string; title: string; body: string; created_at: number; updated_at: number }
 interface DecisionRow { id: string; project_id: string; title: string; context: string; verdict: string; created_at: number }
 interface MemoryRow { id: string; project_id: string; kind: string; content: string; created_at: number }
@@ -141,6 +144,14 @@ interface SearchResultRow { id: string; title: string; snippet: string }
 
 const toStatus = (s: string): Task['status'] =>
   s === 'doing' || s === 'done' ? s : 'todo';
+
+function commentInput(input: { author: string; body: string }): { author: string; body: string } {
+  const author = input.author.trim();
+  const body = input.body.trim();
+  if (!author) throw new Error('Author must not be empty.');
+  if (!body) throw new Error('Comment must not be empty.');
+  return { author, body };
+}
 
 export class TauriStore implements Store {
   private ftsAvailable = true;
@@ -201,6 +212,31 @@ export class TauriStore implements Store {
 
   async setTaskStatus(id: string, status: Task['status']): Promise<void> {
     await this.db.execute('UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?', [status, now(), id]);
+  }
+
+  private async requireCommentTask(projectId: string, taskId: string): Promise<void> {
+    const rows = await this.db.select<Array<{ id: string }>>(
+      'SELECT id FROM tasks WHERE project_id = ? AND id = ?', [projectId, taskId]);
+    if (rows.length === 0) throw new Error('Task not found in project.');
+  }
+
+  async listTaskComments(projectId: string, taskId: string): Promise<TaskComment[]> {
+    await this.requireCommentTask(projectId, taskId);
+    const rows = await this.db.select<TaskCommentRow[]>(
+      'SELECT * FROM task_comments WHERE project_id = ? AND task_id = ? ORDER BY created_at ASC, rowid ASC',
+      [projectId, taskId]);
+    return rows.map((r) => ({ id: r.id, projectId: r.project_id, taskId: r.task_id,
+      author: r.author, body: r.body, createdAt: r.created_at }));
+  }
+
+  async addTaskComment(projectId: string, taskId: string, input: { author: string; body: string }): Promise<TaskComment> {
+    const content = commentInput(input);
+    await this.requireCommentTask(projectId, taskId);
+    const comment: TaskComment = { id: uid(), projectId, taskId, ...content, createdAt: now() };
+    await this.db.execute(
+      'INSERT INTO task_comments (id, project_id, task_id, author, body, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      [comment.id, projectId, taskId, comment.author, comment.body, comment.createdAt]);
+    return comment;
   }
 
   async listDocs(projectId: string): Promise<Doc[]> {
@@ -770,6 +806,7 @@ function toJob(r: JobRow): Job {
 interface Dump {
   projects: Project[];
   tasks: Task[];
+  taskComments: TaskComment[];
   docs: Doc[];
   decisions: Decision[];
   memory: MemoryEntry[];
@@ -799,7 +836,7 @@ interface Dump {
 const FALLBACK_KEY = 'tivity-fallback-v1';
 
 function loadDump(): Dump {
-  const empty: Dump = { projects: [], tasks: [], docs: [], decisions: [], memory: [], links: [], requirements: [], requirementVersions: [], evidence: [], impact: [], sprints: [], milestones: [], pullRequests: [], releases: [], externalRefs: [], syncState: [], screens: [], components: [], testCases: [], testRuns: [], qualityGates: [], securityFindings: [], monitorChecks: [], agents: [], agentRuns: [], jobs: [] };
+  const empty: Dump = { projects: [], tasks: [], taskComments: [], docs: [], decisions: [], memory: [], links: [], requirements: [], requirementVersions: [], evidence: [], impact: [], sprints: [], milestones: [], pullRequests: [], releases: [], externalRefs: [], syncState: [], screens: [], components: [], testCases: [], testRuns: [], qualityGates: [], securityFindings: [], monitorChecks: [], agents: [], agentRuns: [], jobs: [] };
   try {
     if (typeof localStorage === 'undefined') return empty;
     const raw = localStorage.getItem(FALLBACK_KEY);
@@ -850,6 +887,27 @@ export class BrowserStore implements Store {
       t.updatedAt = now();
       this.save();
     }
+  }
+
+  private requireCommentTask(projectId: string, taskId: string): void {
+    if (!this.data.tasks.some((task) => task.projectId === projectId && task.id === taskId)) {
+      throw new Error('Task not found in project.');
+    }
+  }
+
+  async listTaskComments(projectId: string, taskId: string): Promise<TaskComment[]> {
+    this.requireCommentTask(projectId, taskId);
+    return this.data.taskComments.filter((comment) => comment.projectId === projectId && comment.taskId === taskId)
+      .sort((a, b) => a.createdAt - b.createdAt);
+  }
+
+  async addTaskComment(projectId: string, taskId: string, input: { author: string; body: string }): Promise<TaskComment> {
+    const content = commentInput(input);
+    this.requireCommentTask(projectId, taskId);
+    const comment: TaskComment = { id: uid(), projectId, taskId, ...content, createdAt: now() };
+    this.data.taskComments.push(comment);
+    this.save();
+    return comment;
   }
 
   async listDocs(projectId: string): Promise<Doc[]> {

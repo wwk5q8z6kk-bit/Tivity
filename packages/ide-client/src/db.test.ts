@@ -34,6 +34,9 @@ describe('openIdeStore (real node:sqlite)', () => {
     const projects = await first.store.listProjects();
     expect(projects.length).toBe(1);
     const task = await first.store.createTask(projects[0].id, 'Wire IDE search probe');
+    const comment = await first.store.addTaskComment(projects[0].id, task.id, {
+      author: 'IDE agent', body: 'The native store keeps this discussion.',
+    });
     const doc = await first.store.createDoc(projects[0].id, 'IDE notes', 'The quickstart probe body.');
     const hits = await first.store.search(projects[0].id, 'probe');
     expect(hits.map((h) => h.id)).toContain(task.id);
@@ -45,6 +48,7 @@ describe('openIdeStore (real node:sqlite)', () => {
     expect((await second.store.listProjects()).length).toBe(1);
     expect((await second.store.listTasks(projects[0].id)).map((t) => t.title))
       .toContain('Wire IDE search probe');
+    expect(await second.store.listTaskComments(projects[0].id, task.id)).toEqual([comment]);
     second.close();
   });
 

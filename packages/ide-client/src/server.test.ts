@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import type { Project, Store, Task } from '@tivity/core';
+import { BrowserStore, type Project, type Store, type Task } from '@tivity/core';
 import { createTivityServer } from './server';
 
 type FakeMethods = Pick<
@@ -64,18 +64,42 @@ function isError(result: unknown): boolean {
 }
 
 describe('MCP server (in-memory transport)', () => {
-  it('advertises the seven Tivity tools', async () => {
+  it('advertises the nine Tivity tools', async () => {
     const client = await connectedClient(fakeStore());
     const { tools } = await client.listTools();
     expect(tools.map((t) => t.name).sort()).toEqual([
+      'tivity_add_task_comment',
       'tivity_create_task',
       'tivity_impact',
       'tivity_projects',
       'tivity_record_memory',
       'tivity_search',
       'tivity_set_task_status',
+      'tivity_task_comments',
       'tivity_tasks',
     ]);
+  });
+
+  it('shares persistent task discussion with agents and rejects invalid scope', async () => {
+    const store = new BrowserStore();
+    const project = await store.createProject({ name: 'Discussion' });
+    const other = await store.createProject({ name: 'Other' });
+    const task = await store.createTask(project.id, 'Review release');
+    await store.addTaskComment(project.id, task.id, { author: 'Alex', body: 'Please inspect the trace.' });
+    const client = await connectedClient(store, project.id);
+    const posted = await client.callTool({ name: 'tivity_add_task_comment',
+      arguments: { taskId: task.id, author: 'Review agent', body: 'The trace looks healthy.' } });
+    expect(isError(posted)).toBe(false);
+    const listed = await client.callTool({ name: 'tivity_task_comments', arguments: { taskId: task.id } });
+    expect(payloadText(listed)).toContain('Please inspect the trace.');
+    expect(payloadText(listed)).toContain('The trace looks healthy.');
+    const wrongProject = await client.callTool({ name: 'tivity_task_comments',
+      arguments: { project: other.id, taskId: task.id } });
+    expect(isError(wrongProject)).toBe(true);
+    const blank = await client.callTool({ name: 'tivity_add_task_comment',
+      arguments: { taskId: task.id, author: 'Agent', body: ' ' } });
+    expect(isError(blank)).toBe(true);
+    expect(await store.listTaskComments(project.id, task.id)).toHaveLength(2);
   });
 
   it('serves projects, search, and tasks end to end', async () => {

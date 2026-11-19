@@ -570,7 +570,7 @@ Evidence: browser pass — Tasks shows Add a task closed. N on Library opens Add
 Decisive factors: excellence comes from attachable permissive neighbors and a local vector path, without infecting the desktop bundle or ignoring the license gate.
 Evidence: core tests 30 passed (connectors + vector blend). Desktop typecheck passed. Browser Connectors shows 12 entries, Copy config on Tivity MCP, Full MCP attach bundle, Buzz, AgentKit, MCP reference servers, and sqlite-vec. Held rows stay unspecified.
 
-## 0041 — Vector opener on Node — DECIDED: optional sqlite-vec in the IDE/MCP path
+## 0041 — Vector opener on Node — PLANNED: optional sqlite-vec in the IDE/MCP path
 
 | Option | Score notes | Verdict |
 |---|---|---|
@@ -580,9 +580,58 @@ Evidence: core tests 30 passed (connectors + vector blend). Desktop typecheck pa
 | Require a cloud embedding API for the spike | Not local-first | Rejected |
 
 Decisive factors: prove the blend on the path that can load extensions, without breaking surfaces that cannot.
-Evidence: pending unit pass.
+Implementation audit (2026-11-19): the Node opener and vector integration test
+are absent. Only the sqlite-vec dependency and pure rank-blend helper exist.
+This decision remains planned; search still uses the lexical path. See
+[completion criteria](../open-source-roadmap.md#search-implementation-gap).
+
+## 0042 — Integration reliability — DECIDED: official MCP launchers and Playwright
+
+Use the official Python `uvx` launchers for Git and Fetch reference servers;
+keep filesystem on `npx`. Include prerequisites in copyable connector guidance.
+Add Playwright as a development dependency for browser flows, with an isolated
+Vite server and fresh storage per test. CI checks the workspace and browser flows.
+
+Alternatives considered: introducing another application framework duplicates
+the shipped shell; adding more connector entries without verifying their commands
+does not improve usability. Native Tauri verification remains separate.
+
+Sources and adoption order: [open source roadmap](../open-source-roadmap.md).
+
+Evidence: 80 unit tests and five Chromium browser tests passed locally, along
+with workspace and browser-test type checks, the web build, the MCP bundle,
+and the VS Code compile. Local browser tests used an existing Chromium through
+the executable override because this machine runs macOS 13. CI has been added
+for Linux but has not yet run on GitHub.
+
+## 0043 — Unified replacement scope and native task discussion
+
+The product target is one workspace covering Linear-style daily issue work,
+Jira/Confluence-style planning and knowledge, and Buzz by Block-style human–agent
+collaboration. Native collaboration is part of Tivity's scope. Buzz can remain an
+optional migration bridge. See [product direction](../product-direction.md).
+
+The first implemented slice is task discussion: an additive SQLite table and
+backward-compatible browser storage field, a task-inspector composer, and two
+MCP tools for reading and posting. Comments carry project/task ids, a display
+author, body, and timestamp. Both stores reject empty content and invalid
+project/task combinations. Existing tasks and identifiers are preserved.
+
+This is local persisted discussion. Display authors are not authenticated
+identities. Shared membership, server authorization, real-time synchronization,
+channels and notifications remain required work for the replacement target.
+The UI offers manual refresh for comments from another SQLite client.
+
+Verification covers both store backends, idempotent migration, persistence,
+project isolation, input validation, MCP round trips, native database reopening,
+and the browser task-discussion flow.
 
 ## Roadmap (from workflow synthesis, surface-adjusted)
+
+The governing product target is now the [unified workspace](../product-direction.md):
+native issue tracking, knowledge, delivery and human–agent collaboration intended
+to replace Linear, Jira/Confluence and Buzz by Block. The milestones below describe
+the existing foundation, not full replacement parity.
 
 - M0 scaffold + core tables + links + impact check (S0+S1 slice) — SHIPPED and verified
 - M1 requirements versioning + propagation queue + memory whyRefs (S1+S2+S3+S10) — SHIPPED and verified

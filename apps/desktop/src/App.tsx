@@ -3,6 +3,7 @@ import type { Agent, AgentRun, Decision, DesignComponent, Doc, EntityKind, Evide
 import type { Store } from '@tivity/core';
 import { createStore } from './store-setup';
 import { desktopAgentTask } from './agent-task';
+import { TaskDiscussion } from './TaskDiscussion';
 import { CONNECTORS, connectorConfig, destinationForSearchKind, findImpacted, paletteCommands, searchHitElementId, shortId, TIVITY_MCP_TOOLS, type Connector, type ConnectorStance, type EntityRef, type PaletteCommand, type SearchHit } from '@tivity/core';
 
 type Tab = 'tasks' | 'library' | 'activity' | 'links' | 'requirements' | 'ship' | 'agents' | 'connectors';
@@ -2224,6 +2225,7 @@ export default function App() {
                     <p>{revealedDoc.body || 'This doc has no body yet.'}</p>
                   </article>
                 ) : null}
+                {store ? <TaskDiscussion key={`${selectedTask.projectId}:${selectedTask.id}`} store={store} task={selectedTask} /> : null}
               </aside>
             ) : null}
           </div>
