@@ -20,7 +20,7 @@ MINDVAULT_CORS_ALLOWED_ORIGINS=http://localhost:5173 cargo run --locked -p mv-cl
 
 Use the actual browser origin if Vite selects another port. Protected vaults prompt for their access token when saving an excerpt or importing issues.
 
-The browser delivery workspace uses local storage on the app's origin. Existing standalone browser profiles and desktop SQLite databases stay at their original locations. The review action copies one selected comment into the chosen vault namespace. For a shared discussion, open **Delivery → Shared task discussions**, enter the vault namespace and an access token if required, and choose **Load tasks**. Everyone connected to the same vault and namespace can read the same task threads with read access. Writers can post and resolve comments. Use **Refresh** in the thread to see a teammate’s changes. The delivery board itself still uses local storage.
+The browser delivery workspace uses local storage on the app's origin. Existing standalone browser profiles and desktop SQLite databases stay at their original locations. The review action copies one selected comment into the chosen vault namespace. Select a board task and choose **Share task with vault** to review its title, project, status, and destination. Sharing copies the task snapshot. Repeating the same share with the same credentials reuses the saved task. For a shared discussion, open **Delivery → Shared task discussions**, enter the vault namespace and an access token if required, and choose **Load tasks**. Everyone connected to the same vault and namespace can read the same task threads with read access. Writers can post and resolve comments. Use **Refresh** in the thread to see a teammate’s changes. The delivery board itself still uses local storage.
 
 For clients on different computers, set `VITE_API_BASE_URL` to the shared vault’s HTTPS origin when building the frontend. Configure the vault’s allowed CORS origins to include the frontend origin.
 
@@ -36,7 +36,7 @@ Use Node 24 to preview a project from its standalone SQLite database. To find pr
 node scripts/import-delivery-tasks.mjs --db /path/to/tivity.db --project PROJECT_ID --namespace team
 ```
 
-Add `--apply` to create vault tasks. The importer opens the source read-only, maps task statuses, preserves source IDs and timestamps, and prints a receipt for each accepted task. It defaults to the local vault on port 9470 and reads `MINDVAULT_AUTH_TOKEN` when set. Use `--server` to select another vault. Repeating an unchanged import with the same principal reuses the existing node-create keys. A changed source record can yield a conflict and needs reconciliation. Discussion excerpts remain individually reviewable through the UI. Other record types and browser-origin data still require migration support.
+Add `--apply` to create vault tasks. The importer opens the source read-only, maps task statuses, preserves source IDs and timestamps, and prints a receipt for each accepted task. It defaults to the local vault on port 9470 and reads `MINDVAULT_AUTH_TOKEN` when set. Use `--server` to select another vault. Repeating an unchanged import with the same principal reuses the existing node-create keys. A changed source record can yield a conflict and needs reconciliation. Discussion excerpts remain individually reviewable through the UI. Other record types and bulk browser-origin migration still require migration support.
 
 ## MindVault foundation
 

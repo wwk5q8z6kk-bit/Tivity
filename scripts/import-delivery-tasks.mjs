@@ -4,7 +4,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
 
-const statuses = { todo: 'planned', doing: 'in_progress', done: 'done' };
+import { deliveryTaskNode } from './delivery-task-node.mjs';
 
 export function readProjectTasks(path, projectId, namespace) {
   const db = new DatabaseSync(path, { readOnly: true });
@@ -12,20 +12,8 @@ export function readProjectTasks(path, projectId, namespace) {
     db.exec('BEGIN');
     const project = db.prepare('SELECT name FROM projects WHERE id = ?').get(projectId);
     if (!project) throw new Error('Project ID was not found.');
-    const tasks = db.prepare('SELECT id, title, status, created_at, updated_at FROM tasks WHERE project_id = ? ORDER BY created_at, id').all(projectId);
-    return tasks.map(task => {
-      if (!Object.hasOwn(statuses, task.status)) throw new Error('Unsupported status on task ' + task.id);
-      const source = 'tivity:task/' + [projectId, task.id].map(encodeURIComponent).join('/');
-      return {
-        kind: 'task', title: task.title, content: task.title, source, namespace,
-        tags: ['tivity-delivery'],
-        metadata: {
-          project_id: projectId, project_name: project.name, task_id: task.id,
-          task_status: statuses[task.status], task_completed: task.status === 'done',
-          source_created_at_ms: task.created_at, source_updated_at_ms: task.updated_at
-        }
-      };
-    });
+    const tasks = db.prepare('SELECT id, title, status, created_at AS createdAt, updated_at AS updatedAt FROM tasks WHERE project_id = ? ORDER BY created_at, id').all(projectId);
+    return tasks.map(task => deliveryTaskNode(task, projectId, project.name, namespace));
   } finally {
     db.close();
   }

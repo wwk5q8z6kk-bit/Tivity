@@ -2203,6 +2203,11 @@ export default function App() {
                 <h3>{selectedTask.title}</h3>
                 <p><span className={`pill ${selectedTask.status}`}>{columnLabel(selectedTask.status)}</span></p>
                 {taskStatusButton(selectedTask)}
+                {active?.id === selectedTask.projectId && window.parent !== window && window.location.pathname.startsWith('/delivery-ui/') && (
+                  <button type="button" className="ghost" onClick={() => window.parent.postMessage({
+                    type: 'tivity.share-task.v1', projectName: active.name, task: selectedTask,
+                  }, window.location.origin)}>Share task with vault</button>
+                )}
                 <button type="button" className="go" onClick={askAboutSelected}>Ask about this</button>
                 <h4>Links</h4>
                 {taskLinks.length === 0 ? <p className="muted">Nothing linked yet. Connect it from Links.</p> : (
