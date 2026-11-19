@@ -1,7 +1,9 @@
 <script lang="ts">
-	import { listNodes } from '$lib/api/nodes';
+	import { createEventDispatcher } from 'svelte';
+	import { getNode, listNodes } from '$lib/api/nodes';
 	import { ApiError } from '$lib/api/client';
 	import type { KnowledgeNode } from '$lib/api/types';
+	import { boardStatusForVault, deliveryTaskSource } from '../../../../scripts/delivery-task-node.mjs';
 	import CommentsPanel from '$lib/components/CommentsPanel.svelte';
 
 	export let initialNamespace: string;
@@ -14,6 +16,48 @@
 	let selected = '';
 	let offset = 0;
 	const pageSize = 30;
+
+	const dispatch = createEventDispatcher<{
+		review: { type: string; taskId: string; projectId: string; namespace: string; status: string };
+	}>();
+	$: currentTask = tasks.find((task) => task.id === selected);
+
+	async function reviewStatus() {
+		if (!selected || busy) return;
+		busy = true;
+		error = '';
+		try {
+			const task = await getNode(selected, token.trim());
+			const projectId = task.metadata.project_id;
+			const taskId = task.metadata.task_id;
+			if (
+				task.kind !== 'task' ||
+				task.namespace !== namespace.trim() ||
+				typeof projectId !== 'string' ||
+				typeof taskId !== 'string' ||
+				task.source !== deliveryTaskSource(projectId, taskId)
+			) {
+				error = 'This task has no matching delivery board source.';
+				return;
+			}
+			const status = boardStatusForVault(task.metadata.task_status);
+			if (!status) {
+				error = 'This vault status has no matching board column.';
+				return;
+			}
+			dispatch('review', {
+				type: 'tivity.review-status.v1',
+				projectId,
+				taskId,
+				namespace: task.namespace,
+				status
+			});
+		} catch {
+			error = 'Could not read the current vault status. Refresh tasks and try again.';
+		} finally {
+			busy = false;
+		}
+	}
 
 	async function load(start = 0) {
 		if (busy || !namespace.trim()) return;
@@ -83,6 +127,11 @@
 					{/each}
 				</select>
 			</label>
+			{#if currentTask?.source?.startsWith('tivity:task/')}
+				<button disabled={busy} class="underline justify-self-start" on:click={reviewStatus}
+					>Review status on board</button
+				>
+			{/if}
 			{#key selected}
 				<CommentsPanel
 					nodeId={selected}

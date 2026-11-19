@@ -24,6 +24,7 @@ export interface Store {
   listTasks(projectId: string): Promise<Task[]>;
   createTask(projectId: string, title: string): Promise<Task>;
   setTaskStatus(id: string, status: Task['status']): Promise<void>;
+  applyReviewedTaskStatus(expected: Task, status: Task['status']): Promise<boolean>;
   listTaskComments(projectId: string, taskId: string): Promise<TaskComment[]>;
   addTaskComment(projectId: string, taskId: string, input: { author: string; body: string }): Promise<TaskComment>;
   listDocs(projectId: string): Promise<Doc[]>;
@@ -211,7 +212,15 @@ export class TauriStore implements Store {
   }
 
   async setTaskStatus(id: string, status: Task['status']): Promise<void> {
-    await this.db.execute('UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?', [status, now(), id]);
+    await this.db.execute('UPDATE tasks SET status = ?, updated_at = MAX(updated_at + 1, ?) WHERE id = ?', [status, now(), id]);
+  }
+
+  async applyReviewedTaskStatus(expected: Task, status: Task['status']): Promise<boolean> {
+    const rows = await this.db.select<Array<{ id: string }>>(
+      'UPDATE tasks SET status = ?, updated_at = MAX(updated_at + 1, ?) WHERE project_id = ? AND id = ? AND status = ? AND updated_at = ? RETURNING id',
+      [status, now(), expected.projectId, expected.id, expected.status, expected.updatedAt],
+    );
+    return rows.length === 1;
   }
 
   private async requireCommentTask(projectId: string, taskId: string): Promise<void> {
@@ -850,10 +859,14 @@ function loadDump(): Dump {
 export class BrowserStore implements Store {
   private data: Dump = loadDump();
 
+  private memoryOnly = false;
+
   private save(): void {
     try {
       localStorage.setItem(FALLBACK_KEY, JSON.stringify(this.data));
+      this.memoryOnly = false;
     } catch {
+      this.memoryOnly = true;
       // Storage full or blocked: keep running in memory for this session.
     }
   }
@@ -880,13 +893,42 @@ export class BrowserStore implements Store {
     return t;
   }
 
+  private async withTaskWrite<T>(write: () => T): Promise<T> {
+    return globalThis.navigator?.locks
+      ? navigator.locks.request(FALLBACK_KEY, write)
+      : write();
+  }
+
   async setTaskStatus(id: string, status: Task['status']): Promise<void> {
-    const t = this.data.tasks.find((x) => x.id === id);
-    if (t) {
-      t.status = status;
-      t.updatedAt = now();
-      this.save();
-    }
+    await this.withTaskWrite(() => {
+      // Read persisted changes from another tab before updating this task.
+      const latest = loadDump();
+      if (!this.memoryOnly && latest.tasks.some(task => task.id === id)) this.data = latest;
+      const t = this.data.tasks.find(task => task.id === id);
+      if (t) {
+        t.status = status;
+        t.updatedAt = Math.max(t.updatedAt + 1, now());
+        this.save();
+      }
+    });
+  }
+
+  async applyReviewedTaskStatus(expected: Task, status: Task['status']): Promise<boolean> {
+    return this.withTaskWrite(() => {
+      const latest = loadDump();
+      if (this.memoryOnly) throw new Error('Board storage is unavailable.');
+      const task = latest.tasks.find(t => t.projectId === expected.projectId && t.id === expected.id);
+      if (!task) return false;
+      if (task.status !== expected.status || task.updatedAt !== expected.updatedAt) {
+        this.data = latest;
+        return false;
+      }
+      task.status = status;
+      task.updatedAt = Math.max(task.updatedAt + 1, now());
+      localStorage.setItem(FALLBACK_KEY, JSON.stringify(latest));
+      this.data = latest;
+      return true;
+    });
   }
 
   private requireCommentTask(projectId: string, taskId: string): void {

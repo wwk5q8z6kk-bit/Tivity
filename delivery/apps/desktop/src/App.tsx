@@ -3,6 +3,7 @@ import type { Agent, AgentRun, Decision, DesignComponent, Doc, EntityKind, Evide
 import type { Store } from '@tivity/core';
 import { createStore } from './store-setup';
 import { desktopAgentTask } from './agent-task';
+import { VaultStatusReview } from './VaultStatusReview';
 import { TaskDiscussion } from './TaskDiscussion';
 import { CONNECTORS, connectorConfig, destinationForSearchKind, findImpacted, paletteCommands, searchHitElementId, shortId, TIVITY_MCP_TOOLS, type Connector, type ConnectorStance, type EntityRef, type PaletteCommand, type SearchHit } from '@tivity/core';
 
@@ -1737,6 +1738,8 @@ export default function App() {
           <h2>{active ? active.name : 'No project selected'}</h2>
           <p className="progress">{active ? `${recorded} of ${buildSteps.length} stages recorded` : 'Choose a project to begin.'}</p>
         </header>
+        {store && activeId && window.parent !== window && <VaultStatusReview key={activeId} projectId={activeId} store={store}
+          onApplied={id => { selectTask(id); void reloadActive(); }} />}
         {error ? <p className="error">{error}</p> : null}
         <div className="sheet" id="work" tabIndex={-1}>
         <div className="page-head">

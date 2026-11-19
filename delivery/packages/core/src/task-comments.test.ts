@@ -28,6 +28,25 @@ describe.each(['browser', 'sqlite'] as const)('task discussion (%s)', (backend) 
     return { store: store as Store, reopen: async () => { await store.migrate(); return new TauriStore(db); }, close: () => raw.close() };
   }
 
+  it('applies only the reviewed project and task revision', async () => {
+    const opened = await open();
+    try {
+      const { store } = opened;
+      const project = await store.createProject({ name: 'Board' });
+      const original = await store.createTask(project.id, 'Verify release');
+      const snapshot = { ...original };
+      expect(await store.applyReviewedTaskStatus({ ...snapshot, projectId: 'other' }, 'done')).toBe(false);
+      const other = await opened.reopen();
+      await other.setTaskStatus(snapshot.id, 'doing');
+      await other.setTaskStatus(snapshot.id, 'todo');
+      expect(await store.applyReviewedTaskStatus(snapshot, 'done')).toBe(false);
+      const [latest] = await other.listTasks(project.id);
+      expect(await store.applyReviewedTaskStatus({ ...latest }, 'done')).toBe(true);
+      const reopened = await opened.reopen();
+      expect(await reopened.listTasks(project.id)).toEqual([expect.objectContaining({ status: 'done' })]);
+    } finally { opened.close(); }
+  });
+
   it('keeps human and agent comments in order and persists them across reopening', async () => {
     const opened = await open();
     try {

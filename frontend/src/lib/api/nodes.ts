@@ -40,8 +40,8 @@ export async function updateNode(
 	});
 }
 
-export async function getNode(id: string): Promise<KnowledgeNode> {
-	return await fetchJson<KnowledgeNode>(`/api/v1/nodes/${id}`);
+export async function getNode(id: string, token = ''): Promise<KnowledgeNode> {
+	return await fetchJson<KnowledgeNode>(`/api/v1/nodes/${id}`, { headers: bearerHeaders(token) });
 }
 
 export async function deleteNode(id: string): Promise<void> {

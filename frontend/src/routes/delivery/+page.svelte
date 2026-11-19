@@ -129,6 +129,7 @@
 {#if showShared}
 	{#key $activeNamespace}<SharedTaskDiscussions
 			initialNamespace={$activeNamespace ?? 'default'}
+			on:review={(event) => frame?.contentWindow?.postMessage(event.detail, location.origin)}
 		/>{/key}
 {/if}
 <iframe
