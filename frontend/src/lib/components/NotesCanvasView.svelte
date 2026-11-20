@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { goto } from '$app/navigation';
 	import { listNodes } from '$lib/api/nodes';
 	import type { KnowledgeNode } from '$lib/api/types';
 	import { pushToast } from '$lib/stores/toast';
@@ -8,6 +9,7 @@
 		exportToJsonCanvas,
 		type JsonCanvasDocument
 	} from '$lib/canvas/jsonCanvas';
+	import { isSavedCanvas, listCanvases, openCanvas, saveCanvas } from '$lib/canvas/savedCanvases';
 	import { kindColor, kindLabel } from '$lib/utils/kind-helpers';
 
 	export let token = '';
@@ -16,6 +18,7 @@
 		id: string;
 		title: string;
 		kind: string;
+		namespace: string;
 		content: string;
 		x: number;
 		y: number;
@@ -39,21 +42,115 @@
 	let selectedCard: string | null = null;
 	let canvasFileInput: HTMLInputElement | null = null;
 
-	onMount(async () => {
+	let saved: KnowledgeNode[] = [];
+	let opened = '';
+	let name = '';
+	let destination = '';
+	let excluded = new Set<string>();
+	let busy = false;
+	let message = '';
+	let libraryError = '';
+	let draftKey = '';
+	let libraryVersion = 0;
+	let overview: {cards: CanvasCard[]; pan: typeof pan; zoom: number} | null = null;
+	$: destinations = [...new Set(cards.map(card => card.namespace))].sort();
+	$: target = destinations.includes(destination) ? destination : destinations[0];
+
+	$: included = cards.filter(card => card.namespace === target && !excluded.has(card.id));
+	function toggleCard(id: string) {
+		const next = new Set(excluded);
+		if (next.has(id)) next.delete(id);
+		else next.add(id);
+		excluded = next;
+	}
+
+	function cardFrom(node: KnowledgeNode, i: number, cols: number): CanvasCard {
+		return {
+			id: node.id, title: node.title || 'Untitled', kind: node.kind, namespace: node.namespace ?? 'default',
+			content: (node.content ?? '').slice(0, 200), x: (i % cols) * 280 + 40,
+			y: Math.floor(i / cols) * 200 + 40, width: 240, height: 160, color: kindColor(node.kind)
+		};
+	}
+
+	async function refreshLibrary() {
+		const version = ++libraryVersion;
 		try {
-			const nodes = await listNodes({ limit: 50, namespace }, token);
-			const cols = Math.ceil(Math.sqrt(nodes.length));
-			cards = nodes.map((node, i) => ({
-				id: node.id,
-				title: node.title || 'Untitled',
-				kind: node.kind,
-				content: (node.content ?? '').slice(0, 200),
-				x: (i % cols) * 280 + 40,
-				y: Math.floor(i / cols) * 200 + 40,
-				width: 240,
-				height: 160,
-				color: kindColor(node.kind)
-			}));
+			const items = await listCanvases(namespace, token);
+			if (version !== libraryVersion) return;
+			saved = items;
+			libraryError = '';
+		} catch { libraryError = 'Could not load saved canvases.'; }
+	}
+
+	async function saveCopy() {
+		if (busy || !name.trim() || !target || !included.length) return;
+		busy = true;
+		try {
+			draftKey ||= crypto.randomUUID();
+			const layout = { cards: included.map(({id,x,y,width,height}) => ({id,x,y,width,height})), zoom, pan: {...pan} };
+			const node = await saveCanvas(name.trim(), target, layout, token, draftKey);
+			libraryVersion++;
+			saved = [node, ...saved.filter(c => c.id !== node.id)];
+			void refreshLibrary();
+			name = '';
+			draftKey = '';
+			message = 'Saved ' + node.title + ' in ' + target + '.';
+		} catch { message = 'Could not save the canvas. Check your vault access and try again.'; }
+		finally { busy = false; }
+	}
+
+	function canvasLink(id: string) {
+		const url = new URL('/workspace', location.origin);
+		url.searchParams.set('view', 'canvas');
+		if (id) url.searchParams.set('canvas', id);
+		return url;
+	}
+
+	async function copyLink() {
+		try {
+			await navigator.clipboard.writeText(canvasLink(opened).href);
+			message = 'Canvas link copied.';
+		} catch { message = canvasLink(opened).href; }
+	}
+
+	async function switchCanvas(id: string, updateUrl = true) {
+		if (busy) return;
+		busy = true;
+		message = '';
+		try {
+			if (id) {
+				const result = await openCanvas(id, namespace, token);
+				if (!opened) overview = { cards, zoom, pan };
+				cards = result.cards.map(({ record, position }) => ({...cardFrom(record, 0, 1), ...position}));
+				pan = result.layout.pan;
+				zoom = result.layout.zoom;
+				const missing = result.layout.cards.length - cards.length;
+				if (missing) message = missing === 1 ? '1 saved card is no longer available.' : missing + ' saved cards are no longer available.';
+			} else if (overview) {
+				({cards, zoom, pan} = overview);
+				overview = null;
+			}
+			excluded = new Set();
+			opened = id;
+			if (updateUrl && location.pathname.replace(/\/$/, '') === '/workspace')
+				await goto(canvasLink(id), { replaceState: true, noScroll: true, keepFocus: true });
+			selectedCard = null;
+		} catch { message = 'Could not open the saved canvas. Refresh and try again.'; }
+		finally { busy = false; }
+	}
+
+	onMount(async () => {
+		void refreshLibrary();
+		try {
+			const nodes = [];
+			for (let offset = 0; nodes.length < 50; offset += 50) {
+				const page = await listNodes({ limit: 50, offset, namespace }, token);
+				nodes.push(...page.filter(n => !isSavedCanvas(n)));
+				if (page.length < 50) break;
+			}
+			const visible = nodes.slice(0,50);
+			const cols = Math.ceil(Math.sqrt(visible.length));
+			cards = visible.map((node, i) => cardFrom(node, i, cols));
 			// Load saved positions
 			const saved = localStorage.getItem('mv_canvas_positions');
 			if (saved) {
@@ -67,6 +164,8 @@
 					}
 				} catch { /* ignore corrupt data */ }
 			}
+			const requested = new URL(location.href).searchParams.get('canvas');
+			if (requested) await switchCanvas(requested, false);
 			loading = false;
 		} catch {
 			loading = false;
@@ -75,6 +174,7 @@
 	});
 
 	function savePositions() {
+		if (opened) return;
 		let positions: Record<string, { x: number; y: number }> = {};
 		try { positions = JSON.parse(localStorage.getItem('mv_canvas_positions') ?? '{}') ?? {}; }
 		catch { /* Start a new layout if the previous one is corrupt. */ }
@@ -215,12 +315,12 @@
 <svelte:window on:mousemove={handleMouseMove} on:mouseup={handleMouseUp} />
 
 <div class="flex flex-col gap-3">
-	<div class="flex items-center justify-between">
+	<div class="flex flex-wrap items-center justify-between gap-2">
 		<div>
-			<h2 class="text-lg font-semibold text-white">Canvas</h2>
+			<h2 class="text-lg font-semibold text-[rgb(var(--mv-text))]">Canvas</h2>
 			<p class="text-xs text-slate-400">{cards.length} cards &middot; Alt+drag to pan &middot; Scroll to zoom</p>
 		</div>
-		<div class="flex items-center gap-2">
+		<div class="flex flex-wrap items-center gap-2">
 			<label class="rounded-lg border border-slate-700 px-2.5 py-1 text-[10px] text-slate-300 hover:bg-slate-800">
 				Import .canvas
 				<input
@@ -260,6 +360,42 @@
 			<span class="text-[10px] text-slate-500">{Math.round(zoom * 100)}%</span>
 		</div>
 	</div>
+
+	<div class="flex flex-wrap items-end gap-3 rounded-lg border border-[rgb(var(--mv-border))] p-3 text-sm">
+		<label class="grid gap-1">Open canvas
+			<select value={opened} disabled={busy || loading} on:change={async event => {
+				const select = event.currentTarget;
+				const id = select.value;
+				select.value = opened;
+				await switchCanvas(id);
+				select.value = opened;
+			}}>
+				<option value="">Vault overview</option>
+				{#each saved as item (item.id)}<option value={item.id}>{item.title} · {item.namespace}</option>{/each}
+			</select>
+		</label>
+		{#if opened}<button class="underline" disabled={busy} on:click={copyLink}>Copy canvas link</button>{/if}
+		<form class="flex flex-wrap items-end gap-2" on:submit|preventDefault={saveCopy}>
+			<label class="grid gap-1">Canvas name <input bind:value={name} disabled={busy} maxlength="120" placeholder="Project kickoff" /></label>
+			{#if destinations.length > 1}
+				<label class="grid gap-1">Cards from namespace <select value={target} disabled={busy} on:change={e => destination = e.currentTarget.value}>
+					{#each destinations as ns}<option value={ns}>{ns}</option>{/each}
+				</select></label>
+			{/if}
+			{#if cards.length}
+				<details><summary class="cursor-pointer">Choose cards ({included.length})</summary>
+					<div class="max-h-44 overflow-auto py-2">
+						{#each cards.filter(c => c.namespace === target) as card (card.id)}
+							<label class="flex items-center gap-2"><input type="checkbox" checked={!excluded.has(card.id)} disabled={busy} on:change={() => toggleCard(card.id)} />{card.title}</label>
+						{/each}
+					</div>
+				</details>
+			{/if}
+			<button class="rounded border px-3 py-1" disabled={busy || loading || !name.trim() || !included.length}>Save a copy</button>
+		</form>
+		{#if libraryError}<span role="alert">{libraryError} <button on:click={refreshLibrary} class="underline">Retry</button></span>{/if}
+	</div>
+	{#if message}<p role="status">{message}</p>{/if}
 
 	{#if loading}
 		<div class="flex h-[70vh] items-center justify-center rounded-2xl border border-slate-800 bg-slate-950">
