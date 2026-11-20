@@ -2847,7 +2847,7 @@ mod tests {
     /// SPACE-002 — AgentRun is a distinct typed object; plan steps cannot masquerade.
     #[tokio::test]
     async fn work_order_admit_embeds_action_envelope_v2_in_event() {
-        let (engine, _dir) = test_engine().await;
+        let (engine, dir) = test_engine().await;
         let local_node_id = register_local_node(&engine).await;
         let actor =
             StableUri::principal(local_node_id, Uuid::new_v5(&local_node_id, b"wo-envelope"));
@@ -2941,6 +2941,18 @@ mod tests {
         assert_eq!(
             action_envelope["work_order_id"],
             serde_json::json!(admitted.work_order_id)
+        );
+        let db = rusqlite::Connection::open(dir.path().join("mindvault.sqlite")).unwrap();
+        let archived: String = db
+            .query_row(
+                "SELECT action_envelope FROM work_order_admission_ledger WHERE event_id = ?1",
+                [event.id.to_string()],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            &serde_json::from_str::<serde_json::Value>(&archived).unwrap(),
+            action_envelope
         );
         assert!(action_envelope.get("space_id").is_none());
     }

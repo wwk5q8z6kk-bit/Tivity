@@ -820,6 +820,10 @@ async fn wedge_value_proof_trusted_work_completes_over_http() {
     )
     .await;
     assert_eq!(before["run"]["run_id"], run_id);
+    let receipt = &before["admission_receipt"];
+    assert!(uuid::Uuid::parse_str(receipt["event_id"].as_str().unwrap()).is_ok());
+    assert_eq!(receipt["principal"], receipt["actor"]);
+    assert!(receipt["action_envelope"].is_null());
     assert_eq!(before["artifacts"], json!([]));
     let executed = router
         .clone()

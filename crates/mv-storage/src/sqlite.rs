@@ -309,6 +309,10 @@ impl SqliteNodeStore {
                 44,
                 include_str!("../../../migrations/044_projection_checkpoints.sql"),
             ),
+            (
+                45,
+                include_str!("../../../migrations/045_work_order_admission_ledger.sql"),
+            ),
         ];
 
         // Migration 001 must always run first to create schema_version table.
@@ -5813,6 +5817,29 @@ impl InteroperabilityStore for SqliteNodeStore {
 
         Self::insert_outbox_event(&transaction, event)?;
         transaction
+            .execute(
+                "INSERT INTO work_order_admission_ledger
+             (work_order_id, event_id, principal_uri, actor_uri, correlation_id,
+              idempotency_key, event_payload_digest, occurred_at, action_envelope)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                params![
+                    work_order.work_order_id.to_string(),
+                    event.id.to_string(),
+                    event.principal.as_str(),
+                    event.actor.as_str(),
+                    event.correlation_id.to_string(),
+                    event.idempotency_key.as_str(),
+                    event.payload_digest,
+                    event.occurred_at.to_rfc3339(),
+                    event
+                        .data
+                        .get("action_envelope")
+                        .map(serde_json::to_string)
+                        .transpose()?
+                ],
+            )
+            .map_err(|err| MvError::Storage(format!("record work-order admission: {err}")))?;
+        transaction
             .commit()
             .map_err(|err| MvError::Storage(format!("commit work-order admission: {err}")))?;
 
@@ -6113,6 +6140,34 @@ impl InteroperabilityStore for SqliteNodeStore {
             run: run.clone(),
             event: event.clone(),
             replayed: false,
+        })
+    }
+
+    async fn work_order_admission_receipt(
+        &self,
+        order_id: Uuid,
+    ) -> MvResult<Option<WorkOrderAdmissionReceipt>> {
+        self.with_conn(|connection| {
+            connection
+                .query_row(
+                    "SELECT event_id, principal_uri, actor_uri, occurred_at
+             FROM work_order_admission_ledger WHERE work_order_id = ?1",
+                    [order_id.to_string()],
+                    |row| {
+                        Ok(WorkOrderAdmissionReceipt {
+                            event_id: parse_uuid_str(0, &row.get::<_, String>(0)?)?,
+                            principal: StableUri::parse(row.get::<_, String>(1)?)
+                                .map_err(|err| Self::as_sql_conversion_error(1, err))?,
+                            actor: StableUri::parse(row.get::<_, String>(2)?)
+                                .map_err(|err| Self::as_sql_conversion_error(2, err))?,
+                            occurred_at: parse_dt_strict(3, &row.get::<_, String>(3)?)?,
+                        })
+                    },
+                )
+                .optional()
+                .map_err(|err| {
+                    MvError::Storage(format!("read work-order admission receipt: {err}"))
+                })
         })
     }
 
@@ -13416,7 +13471,7 @@ mod tests {
                         row.get(0)
                     })
                     .map_err(|err| MvError::Storage(err.to_string()))?;
-                assert_eq!(schema_version, 44);
+                assert_eq!(schema_version, 45);
 
                 for collab in [
                     "collab_workspaces",
@@ -17039,7 +17094,9 @@ mod tests {
 
     #[tokio::test]
     async fn admission_replay_returns_the_original_work_order() {
-        let store = SqliteNodeStore::open_in_memory().unwrap();
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("ledger.sqlite");
+        let store = SqliteNodeStore::open(&path).unwrap();
         let local_node_id = store.local_context_node_id().await.unwrap();
         register_local_context_node(&store).await;
 
@@ -17056,7 +17113,27 @@ mod tests {
             &["mindvault://schemas/idempotent"],
             RiskTier::Low,
         );
-        let event = work_order_admitted_event(local_node_id, &work_order, 1, 0, "admit-replay");
+        let event = work_order_admitted_event(
+            local_node_id,
+            &work_order,
+            1,
+            0,
+            &work_order.idempotency_key,
+        );
+        let db = Connection::open(&path).unwrap();
+        db.execute_batch("CREATE TRIGGER reject_test_receipt BEFORE INSERT ON work_order_admission_ledger BEGIN SELECT RAISE(ABORT,'test write failure'); END;").unwrap();
+        assert!(store
+            .commit_work_order_with_event(&work_order, std::slice::from_ref(&node), &[], &event)
+            .await
+            .is_err());
+        assert!(store
+            .get_work_order(work_order.work_order_id)
+            .await
+            .unwrap()
+            .is_none());
+        assert!(store.get_outbox_event(event.id).await.unwrap().is_none());
+        db.execute_batch("DROP TRIGGER reject_test_receipt")
+            .unwrap();
 
         let first = store
             .commit_work_order_with_event(&work_order, std::slice::from_ref(&node), &[], &event)
@@ -17071,6 +17148,46 @@ mod tests {
         assert!(replay.replayed, "retrying admission must not duplicate");
         assert_eq!(replay.work_order.work_order_id, work_order.work_order_id);
         assert_eq!(replay.work_order.revision, 1);
+        drop(db);
+        drop(store);
+        let db = Connection::open(&path).unwrap();
+        let expected = WorkOrderAdmissionReceipt {
+            event_id: event.id,
+            principal: event.principal.clone(),
+            actor: event.actor.clone(),
+            occurred_at: event.occurred_at,
+        };
+        let reopened = SqliteNodeStore::open(&path).unwrap();
+        assert_eq!(
+            reopened
+                .work_order_admission_receipt(work_order.work_order_id)
+                .await
+                .unwrap()
+                .as_ref(),
+            Some(&expected)
+        );
+        drop(reopened);
+        for sql in [
+            "UPDATE work_order_admission_ledger SET actor_uri = 'changed'",
+            "DELETE FROM work_order_admission_ledger",
+            "INSERT OR REPLACE INTO work_order_admission_ledger SELECT * FROM work_order_admission_ledger",
+        ] {
+            assert!(db.execute(sql, []).is_err());
+        }
+        // Reconstruct a v44 vault and upgrade using the real migration runner.
+        db.execute_batch(
+            "DROP TABLE work_order_admission_ledger; DELETE FROM schema_version WHERE version=45",
+        )
+        .unwrap();
+        drop(db);
+        let upgraded = SqliteNodeStore::open(&path).unwrap();
+        assert_eq!(
+            upgraded
+                .work_order_admission_receipt(work_order.work_order_id)
+                .await
+                .unwrap(),
+            Some(expected)
+        );
     }
 
     #[tokio::test]

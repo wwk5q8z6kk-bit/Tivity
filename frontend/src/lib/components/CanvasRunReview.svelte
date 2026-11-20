@@ -156,6 +156,27 @@
 					>
 				{/if}
 			{:else}<p>Open the vault over HTTPS or localhost to compare evidence fingerprints.</p>{/if}
+			{#if result.admission_receipt}
+				<details class="break-all">
+					<summary>Work order admission receipt</summary>
+					<dl>
+						<dt>Accountable principal</dt>
+						<dd>{result.admission_receipt.principal}</dd>
+						<dt>Acting identity</dt>
+						<dd>{result.admission_receipt.actor}</dd>
+						<dt>Admitted</dt>
+						<dd>
+							<time datetime={result.admission_receipt.occurred_at}
+								>{new Date(result.admission_receipt.occurred_at).toLocaleString()}</time
+							>
+						</dd>
+						<dt>Event ID</dt>
+						<dd>{result.admission_receipt.event_id}</dd>
+					</dl>
+				</details>
+			{:else if result.admission_receipt === null}<p>
+					No local admission receipt is available for this order.
+				</p>{/if}
 			<h4>Checks</h4>
 			{#each result.gates as gate}
 				<RunGateEvidence {gate} />

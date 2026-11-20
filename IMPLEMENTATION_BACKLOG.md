@@ -486,13 +486,13 @@ interoperability kernel."
 
 #### IK-020 — Mandatory durable Trust Ledger
 - **priority:** P2 — required disposition; request audit is telemetry, not a ledger
-- **status:** not_started
+- **status:** in_progress
 - **mandate:** `docs/architecture/interoperability-baseline.md:49` — "Keep as telemetry; add mandatory Trust Ledger with principal/actor/grants/effects"; ADR 010:150-152 — "none is a substitute until it carries the complete envelope and is durable by default"
 - **governing_authority:** feature-completeness §7 (`:122`)
 - **blocked_by:** IK-002 (declared — the ledger stores action envelopes)
 - **files:** new migration, `crates/mv-server/src/audit.rs`, `crates/mv-core/src/model/`
 - **acceptance:** `cargo test -p mv-server -- trust_ledger` — append-only, survives restart, cannot be disabled by configuration, and every action envelope produces one record
-- **evidence:** —
+- **coverage:** Local work-order admission now commits its attribution receipt with the canonical order and outbox event. The protected run-evidence response exposes the admission time, principal, actor and event ID. Migration 045 recovers matching historical events. Storage tests cover rollback, replay, restart, upgrade and append-only enforcement. Grant and policy metadata are preserved when supplied. Run transitions, reviewer decisions and other effectful commands still need ledger coverage.
 
 #### IK-021 — Receipt boundary across all remaining effectful actions
 - **priority:** P2 — required disposition

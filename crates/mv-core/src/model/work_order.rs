@@ -697,6 +697,16 @@ pub struct AgentRun {
     pub updated_at: DateTime<Utc>,
 }
 
+/// Public attribution fields of a locally committed work order. The underlying
+/// policy envelope stays in storage and is not exposed to ordinary reviewers.
+#[derive(Debug, PartialEq, Serialize)]
+pub struct WorkOrderAdmissionReceipt {
+    pub event_id: Uuid,
+    pub principal: StableUri,
+    pub actor: StableUri,
+    pub occurred_at: DateTime<Utc>,
+}
+
 /// Evidence from a single database read transaction. Storage returns gates and
 /// artifacts in stable order so independent readers can compare revisions.
 #[derive(Debug, Serialize)]
