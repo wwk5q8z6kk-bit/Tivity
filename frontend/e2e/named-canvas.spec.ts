@@ -19,9 +19,14 @@ test('reopens only the chosen canvas cards with current vault content and saved 
 		b = task(second, 'Other work');
 	let saved: Record<string, unknown> | undefined;
 	let hide = false;
+	const questions: { path: string; body: { message: string; history: unknown[] } }[] = [];
 	await page.route('**/api/v1/**', async (route) => {
 		const req = route.request(),
 			url = new URL(req.url());
+		if (url.pathname.endsWith('/chat') && req.method() === 'POST') {
+			questions.push({ path: url.pathname, body: req.postDataJSON() });
+			return route.fulfill({ json: { answer: 'Check the launch plan.', sources: [] } });
+		}
 		if (url.pathname === '/api/v1/nodes' && req.method() === 'POST') {
 			saved = { ...req.postDataJSON(), id: view };
 			return route.fulfill({ json: saved });
@@ -66,6 +71,20 @@ test('reopens only the chosen canvas cards with current vault content and saved 
 	await expect(page).toHaveURL(new RegExp('canvas=' + view));
 	await page.reload();
 	await expect(restored).toBeVisible();
+	const assistant = page.getByRole('complementary', { name: 'Workspace assistant' });
+	await assistant.getByRole('button', { name: 'Ask about canvas · Launch room' }).click();
+	for (const question of ['What is next?', 'Who should review it?']) {
+		await assistant.getByLabel('Message').fill(question);
+		await assistant.getByRole('button', { name: 'Send', exact: true }).click();
+		await expect(assistant.getByLabel('Message')).toHaveValue('');
+	}
+	expect(questions.map((q) => q.path)).toEqual(Array(2).fill('/api/v1/canvases/' + view + '/chat'));
+	expect(questions[1].body.history).toHaveLength(2);
+	await assistant.getByRole('button', { name: 'Remove canvas · Launch room' }).click();
+	await assistant.getByLabel('Message').fill('Search the vault');
+	await assistant.getByRole('button', { name: 'Send', exact: true }).click();
+	await expect(assistant.getByLabel('Message')).toHaveValue('');
+	expect(questions[2]).toMatchObject({ path: '/api/v1/chat', body: { history: [] } });
 	expect(await restored.evaluate((el) => el.style.left)).toBe(left);
 	await expect(canvas.getByRole('button', { name: /Other work/ })).toHaveCount(0);
 	await page.getByLabel('Open canvas').selectOption('');

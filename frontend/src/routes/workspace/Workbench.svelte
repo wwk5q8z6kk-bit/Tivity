@@ -6,6 +6,7 @@
 	import { sourceHref } from '$lib/chat/citations';
 	import LibraryWorkspaceBrowser from '$lib/components/LibraryWorkspaceBrowser.svelte';
 	import NotesCanvasView from '$lib/components/NotesCanvasView.svelte';
+	import type { KnowledgeNode } from '$lib/api/types';
 	import type { WorkspaceDocumentRead } from '$lib/api/workspaces';
 	import Delivery from '../delivery/+page.svelte';
 
@@ -22,10 +23,19 @@
 	$: if (view && !visited.has(view)) visited = new Set([...visited, view]);
 	let document: WorkspaceDocumentRead | null = null;
 	let attachment: WorkspaceDocumentRead | null = null;
+	type CanvasRef = Pick<KnowledgeNode, 'id' | 'title' | 'namespace'>;
+	let selectedCanvas: CanvasRef | null = null;
+	let attachedCanvas: CanvasRef | null = null;
 	let draft = '';
 	let busy = false;
 	let error = '';
-	type Turn = { question: string; attachment?: string; answer: string; sources: ChatSource[] };
+	type Turn = {
+		canvasId?: string;
+		question: string;
+		attachment?: string;
+		answer: string;
+		sources: ChatSource[];
+	};
 	let turns: Turn[] = [];
 	async function send() {
 		const question = draft.trim();
@@ -48,19 +58,24 @@
 			const response = await sendChatMessage(
 				{
 					message,
-					namespace,
-					history: turns.slice(-4).flatMap((t) => [
-						{ role: 'user' as const, content: t.question },
-						{ role: 'assistant' as const, content: t.answer }
-					])
+					namespace: attachedCanvas?.namespace ?? namespace,
+					history: turns
+						.filter((t) => t.canvasId === attachedCanvas?.id)
+						.slice(-4)
+						.flatMap((t) => [
+							{ role: 'user' as const, content: t.question },
+							{ role: 'assistant' as const, content: t.answer }
+						])
 				},
-				token
+				token,
+				attachedCanvas?.id
 			);
 			turns = [
 				...turns,
 				{
 					question,
-					attachment: attachment?.relative_path,
+					attachment: attachedCanvas?.title ?? attachment?.relative_path,
+					canvasId: attachedCanvas?.id,
 					answer: response.answer,
 					sources: response.sources
 				}
@@ -120,12 +135,28 @@
 				bind:value={draft}
 				disabled={busy}
 			></textarea>
-			{#if attachment}
+			{#if attachedCanvas}
+				<button
+					type="button"
+					class="text-left text-xs underline"
+					disabled={busy}
+					on:click={() => (attachedCanvas = null)}>Remove canvas · {attachedCanvas.title}</button
+				>
+				<small>Replies use this canvas until you remove it.</small>
+			{:else if attachment}
 				<button
 					type="button"
 					class="text-left text-xs underline"
 					disabled={busy}
 					on:click={() => (attachment = null)}>Remove excerpt · {attachment.relative_path}</button
+				>
+			{:else if view === 'canvas' && selectedCanvas}
+				<button
+					type="button"
+					class="text-left text-xs underline"
+					disabled={busy}
+					on:click={() => (attachedCanvas = selectedCanvas)}
+					>Ask about canvas · {selectedCanvas.title}</button
 				>
 			{:else if view === 'files' && document}
 				<button
@@ -151,7 +182,7 @@
 			</div>{/if}
 		{#if visited.has('projects')}<div hidden={view !== 'projects'}><Delivery /></div>{/if}
 		{#if visited.has('canvas')}<div hidden={view !== 'canvas'}>
-				<NotesCanvasView {token} {namespace} />
+				<NotesCanvasView {token} {namespace} bind:selectedCanvas />
 			</div>{/if}
 	</section>
 </div>

@@ -1,12 +1,16 @@
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 
 use axum::http::StatusCode;
-use axum::{extract::State, Extension, Json};
-use mv_core::{MemoryQuery, QueryFilters, SearchResult, SearchStrategy};
+use axum::{
+    extract::{Path, State},
+    Extension, Json,
+};
+use mv_core::{MatchSource, MemoryQuery, NodeKind, QueryFilters, SearchResult, SearchStrategy};
 use mv_engine::llm;
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
-use crate::auth::{authorize_read, scoped_namespace, AuthContext};
+use crate::auth::{authorize_namespace, authorize_read, scoped_namespace, AuthContext};
 use crate::limits::enforce_ai_rate_limit;
 use crate::state::AppState;
 use crate::validation::{validate_query_text, validate_recall_limit};
@@ -122,18 +126,7 @@ pub async fn chat(
     State(state): State<Arc<AppState>>,
     Json(mut req): Json<ChatRequest>,
 ) -> Result<Json<ChatResponse>, (StatusCode, String)> {
-    authorize_read(&auth)?;
-    enforce_ai_rate_limit(&auth).map_err(|err| {
-        (
-            StatusCode::TOO_MANY_REQUESTS,
-            format!(
-                "AI rate limit exceeded; retry after {} seconds (limit {} per {}s)",
-                err.retry_after_secs, err.max_requests, err.window_secs
-            ),
-        )
-    })?;
-    validate_query_text("message", &req.message)
-        .map_err(|err| (StatusCode::BAD_REQUEST, err.to_string()))?;
+    validate_message(&auth, &req.message)?;
 
     let requested_limit = req.limit.unwrap_or(8);
     validate_recall_limit(requested_limit)
@@ -161,11 +154,107 @@ pub async fn chat(
     };
 
     let results = state.engine.recall(&query).await.map_err(map_mv_error)?;
+    answer(&state, req, results, limit, empty_vault_answer()).await
+}
+
+fn validate_message(auth: &AuthContext, message: &str) -> Result<(), (StatusCode, String)> {
+    authorize_read(auth)?;
+    enforce_ai_rate_limit(auth).map_err(|err| {
+        (
+            StatusCode::TOO_MANY_REQUESTS,
+            format!(
+                "AI rate limit exceeded; retry after {} seconds (limit {} per {}s)",
+                err.retry_after_secs, err.max_requests, err.window_secs
+            ),
+        )
+    })?;
+    validate_query_text("message", message)
+        .map_err(|err| (StatusCode::BAD_REQUEST, err.to_string()))?;
+
+    Ok(())
+}
+
+/// Ground a question in the current, readable members of a saved canvas.
+pub async fn canvas_chat(
+    Extension(auth): Extension<AuthContext>,
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<Uuid>,
+    Json(req): Json<ChatRequest>,
+) -> Result<Json<ChatResponse>, (StatusCode, String)> {
+    validate_message(&auth, &req.message)?;
+    let scope = scoped_namespace(&auth, req.namespace.clone())?;
+    let canvas = state
+        .engine
+        .get_node(id)
+        .await
+        .map_err(map_mv_error)?
+        .ok_or((StatusCode::NOT_FOUND, "canvas not found".into()))?;
+    authorize_namespace(&auth, &canvas.namespace)?;
+    if scope.as_ref().is_some_and(|ns| ns != &canvas.namespace)
+        || canvas.kind != NodeKind::SavedView
+        || !canvas.tags.iter().any(|tag| tag == "tivity-canvas-v1")
+    {
+        return Err((StatusCode::NOT_FOUND, "canvas not found".into()));
+    }
+    let cards = canvas
+        .metadata
+        .get("canvas_layout")
+        .and_then(|v| v.get("cards"))
+        .and_then(|v| v.as_array())
+        .filter(|items| items.len() <= 50)
+        .ok_or((
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "invalid canvas layout".into(),
+        ))?;
+    let mut results = Vec::new();
+    let mut seen = HashSet::new();
+    for card in cards {
+        let card_id = card
+            .get("id")
+            .and_then(|v| v.as_str())
+            .and_then(|s| Uuid::parse_str(s).ok())
+            .ok_or((
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "invalid canvas card".into(),
+            ))?;
+        if !seen.insert(card_id) {
+            continue;
+        }
+        if let Some(node) = state.engine.get_node(card_id).await.map_err(map_mv_error)? {
+            if node.namespace == canvas.namespace
+                && !(node.kind == NodeKind::SavedView
+                    && node.tags.iter().any(|t| t == "tivity-canvas-v1"))
+            {
+                results.push(SearchResult {
+                    node,
+                    score: 1.0,
+                    match_source: MatchSource::Graph,
+                });
+            }
+        }
+    }
+    answer(
+        &state,
+        req,
+        results,
+        50,
+        "This canvas has no readable cards.".into(),
+    )
+    .await
+}
+
+async fn answer(
+    state: &AppState,
+    req: ChatRequest,
+    results: Vec<SearchResult>,
+    limit: usize,
+    empty_answer: String,
+) -> Result<Json<ChatResponse>, (StatusCode, String)> {
     let sources = sources_from_results(&results, limit);
 
     if sources.is_empty() {
         return Ok(Json(ChatResponse {
-            answer: empty_vault_answer(),
+            answer: empty_answer,
             sources: vec![],
             provider: "retrieval-empty".to_string(),
             mode: "native".to_string(),

@@ -14,6 +14,7 @@
 	import { kindColor, kindLabel } from '$lib/utils/kind-helpers';
 
 	export let token = '';
+	export let selectedCanvas: Pick<KnowledgeNode, 'id' | 'title' | 'namespace'> | null = null;
 	export let namespace: string | undefined = undefined;
 	type CanvasCard = {
 		id: string;
@@ -127,12 +128,14 @@
 				const result = await openCanvas(id, namespace, token);
 				if (!opened) overview = { cards, zoom, pan };
 				cards = result.cards.map(({ record, position }) => ({...cardFrom(record, 0, 1), ...position}));
+				selectedCanvas = { id: result.node.id, title: result.node.title, namespace: result.node.namespace };
 				pan = result.layout.pan;
 				zoom = result.layout.zoom;
 				const missing = result.layout.cards.length - cards.length;
 				if (missing) message = missing === 1 ? '1 saved card is no longer available.' : missing + ' saved cards are no longer available.';
 			} else if (overview) {
 				({cards, zoom, pan} = overview);
+				selectedCanvas = null;
 				overview = null;
 			}
 			excluded = new Set();
