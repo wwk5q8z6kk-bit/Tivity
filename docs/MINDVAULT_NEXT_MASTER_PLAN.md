@@ -1,8 +1,8 @@
 # MindVault Next — Master Product, Architecture, Interoperability, Collaboration, Agent, Security, and Execution Plan
 
 - **Status:** Superseding master plan (research-expanded)
-- **Date:** 2026-07-26 · **Revised:** 2026-07-31
-- **Working product name:** MindVault Next
+- **Date:** 2026-07-26 · **Revised:** 2026-11-19
+- **User-facing product:** Tivity (MindVault foundation)
 - **Internal architecture name:** Sovereign Context Fabric
 - **Owner:** Hassan El Jesr
 - **Sources:** Desktop research-expanded master plan; baseline 2026-07-26 plan; research expansion delta; adjacent-domain research register (see [`docs/research/`](research/))
@@ -19,6 +19,62 @@ This document supersedes [`DEVELOPMENT_PLAN.md`](../DEVELOPMENT_PLAN.md) for pro
 3. **Execution status** is never inferred from prose here. Status lives only in [`IMPLEMENTATION_BACKLOG.md`](../IMPLEMENTATION_BACKLOG.md) (`verified` requires evidence).
 4. Evidence-first: distinguish verified implementation from claims; filenames and “code present” are not completion.
 5. Sections **102–145** (research expansion) are binding where earlier examples appear narrower. Examples are conformance floors, never scope ceilings.
+
+## Tivity command center — product direction and delivery sequence
+
+**Planning revision, 2026-11-19.** Tivity is the user-facing product. MindVault supplies the vault and governed execution foundation. This section connects the command-center experience to the ratified Trusted Agent Work strategy. The first customer is a technical lead who delegates work to an agent and a teammate who must decide whether to use the result. The long-term customer can run a project, or their own workday, in the same application.
+
+### The job from first principles
+
+Consider a release lead deciding whether to ship on Friday. The issue says the change is finished, a checklist lives in a folder, and a teammate raised an unresolved concern in a discussion. The lead needs to identify what changed, see the underlying evidence, assign the remaining work and hand the decision to someone else. Today a person often has to reconstruct that chain. Our hypothesis is that reducing the cost of this handoff is a stronger reason to switch tools than owning yet another place to write a ticket.
+
+| What the people involved need | Product consequence |
+|---|---|
+| Know what outcome they are working toward | A project has an owner, an intended outcome, outstanding decisions and evidence of progress. A board and a canvas can show different views of the same work. |
+| Know which information they can use | Files keep their owner and revision. A canvas stores references. Opening a reference checks current access. A private note enters a shared Space through an explicit choice of content and audience. |
+| Delegate a bounded change | The composer can propose a Work Order with inputs, allowed actions, budget and acceptance criteria. Reading a file and acting on a project require separate authority. |
+| Decide whether a result is good enough | Show the artifact, the evidence version used, checks performed, unresolved questions and reviewer decision. Distinguish completion of a run from acceptance of its output. |
+| Resume work after a handoff or failure | Use stable IDs, durable decisions and receipts. A retry resumes the same operation. A second client can reconstruct the outcome after a restart. |
+
+### Research that changes the design
+
+| Observation from a primary source | Decision for Tivity |
+|---|---|
+| Linear ties project updates to a lead, a health assessment and an explanation of progress. [Linear project updates](https://linear.app/docs/initiative-and-project-updates) | Make the release lead responsible for the published conclusion. Let the assistant assemble evidence and draft an update for review. |
+| Jira can link an epic to the Confluence page containing its specification. [Atlassian documentation](https://support.atlassian.com/jira-software-cloud/docs/link-a-confluence-page-to-an-epic/) | Preserve the relationship between a work item and its source document through import, review and export. |
+| Block publishes Buzz as an open-source communication app that can connect to a team's own relay. [Block Buzz repository](https://github.com/block/buzz) | Use a real conversation-to-decision handoff as the collaboration test. Keep relay delivery and the decision to retain an excerpt as project knowledge separate. Evaluate an adapter when a pilot needs Buzz interoperability. |
+| OpenAI describes project-based agent threads and reviewing changes in the Codex app. [Codex app introduction](https://openai.com/index/introducing-the-codex-app/) | Keep the composer and navigation on the left, the working artifact in view, and a review action next to its evidence. Test whether someone can switch between a file, board and canvas without rebuilding their question. |
+| JSON Canvas describes nodes, geometry and edges in an openly documented format. [JSON Canvas specification](https://jsoncanvas.org/spec/1.0/) | Use portable layouts and test round trips with another reader. Resolve permissions in Tivity whenever a saved layout refers to a vault record. |
+
+These are design inputs. The commercial question requires direct observation. Ask each pilot team to walk through its last release decision using its own tools. Record where the reviewer lost context, what they had to recheck, and the time to a decision. Repeat with comparable work in Tivity.
+
+### What to build on
+
+The combined workspace already supports browsing mounted Markdown, reviewing imported tasks, discussing a named canvas and expanding a cited vault record. The browser board stores local state. Sharing a task creates a reviewed snapshot. The vault and delivery surfaces still use separate credentials. A namespace, a document folder and membership in a shared Space have distinct meanings. Converging these experiences requires an explicit source of truth and access checks for each operation. [Current app behavior](../README.md)
+
+On 2026-11-19 a fresh local vault ran `mv trusted-work demo` and returned a completed internal run, an artifact ID, a digest and four gate results. The printed completion count covers that process lifetime. The existing HTTP conformance fixture also passed when rerun from the locally built test executable. That fixture exercises the server router with authentication disabled and an autonomy rule for internal execution. It establishes a baseline for the execution path. A durable cross-session handoff, reviewer acceptance and repeated customer use each require their own proof. [Existing proof and limits](strategy/unicorn/WEDGE_VALUE_PROOF_RESULTS.md)
+
+### Delivery sequence
+
+| Milestone | Work and dependencies | Evidence required to move forward |
+|---|---|---|
+| 1. Reopen one result | Exercise the existing Work Order, run, gate and artifact read paths using a fresh client. Document the owner and scope of each record. Start with the internal low-risk executor. | A permitted reviewer can reopen the same run after a server restart, identify its artifact by digest and see its gate outcomes. A reviewer outside the scope is denied. A missing evidence record is visible as a gap. |
+| 2. Complete the trust foundation | Close the relevant identity, grant, action-envelope, reliable-effect and communication-promotion gaps. Reconcile existing admission receipts with the durable Trust Ledger. Cover transitions as well as initial admission. | Exercise revocation before an action, crash after an admitted write, retry after an uncertain response and explicit promotion of a discussion excerpt. Verify one attributable effect and one durable outcome for each accepted operation. |
+| 3. Put the handoff in the command center | From a release canvas, choose evidence, propose a bounded Work Order, review scope, execute and present the result. Record the reviewer’s acceptance or reason for returning it. Keep draft state and private inputs scoped to their owner. | Two people complete the Friday release scenario on separate clients. The reviewer traces a claim to the evidence revision used, can inspect later changes, and sees the same recorded decision after reconnecting. |
+| 4. Replace a team's recurring delivery workflow | Pilot one real project alongside its current tracker. Map its statuses, owners, documents, source IDs and dependencies. Reconcile imports and expose conflicts. Add the board, update and discussion behaviors the pilot actually depends on. | The team runs its regular review in Tivity, reconciles a sample against the original tracker, exports its records and can recover from an interrupted migration. Measure repeat use and decision time against its own baseline. |
+| 5. Expand to a personal and team command center | Reuse the same objects and authority model for a second workflow, such as turning a meeting decision into an assigned task and a scheduled report. Add integrations and domain packs as repeated needs emerge. External execution depends on runtime isolation. | A second workflow uses the existing grants, review and receipts. The same person can move between private work and shared work with a visible audience and verify exactly what was shared. |
+
+The critical path runs through identity, stable references and durable outcomes. Research and partner observation can proceed while foundation work lands. Schedule a pilot once the two-client handoff passes. Use measured integration effort and the team's real review cadence to forecast migration. The execution backlog owns item status and dependencies, including IK-001 through IK-003, IK-020, SPACE-002 through SPACE-006 and AGENT-004. [Implementation backlog](../IMPLEMENTATION_BACKLOG.md)
+
+### First engineering increment and product decision
+
+1. Run the existing HTTP value proof and record the work-order ID, run ID, artifact digest, gate results and the fixture’s identity configuration. Find which of these a second client can retrieve after restart.
+2. Add a restart-and-reopen acceptance case with an authorized reviewer, an unrelated principal and an absent artifact. Compare the returned digest with the original. This locates the first missing persistence or authorization boundary.
+3. Fix the smallest gap revealed by that case. Reuse the existing records and routes. If a new permission or durable record is needed, define its owner, lifecycle and retry semantics before exposing it in the app.
+4. Expose that proven read path from the workspace and repeat the handoff using the installed client. Track separate counts for completed runs, accepted artifacts and repeated weekly use by a team. Derive adoption from durable, deduplicated events.
+5. In the pilot, compare reviewer time and source-checking errors with the team's baseline. If people generate more runs but rarely accept or reuse an artifact, investigate evidence quality and the review workflow before adding more integrations.
+
+The first product decision after this increment is whether a reviewer trusts the handoff enough to use it again on real work. That observation determines which part of the broader vision deserves the next engineering investment.
 
 ## Progress Reconciliation (as of 2026-07-31)
 
