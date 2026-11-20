@@ -607,11 +607,11 @@ pub(crate) async fn fail_run(
     Json(request): Json<FailRunRequest>,
 ) -> Result<Json<RunView>, (StatusCode, String)> {
     authorize_write(&auth)?;
-    authorize_order_run(&state, &auth, work_order_id, run_id, SpaceOperation::Write).await?;
     let class: RunFailureClass = request
         .failure_class
         .parse()
         .map_err(|err: String| (StatusCode::BAD_REQUEST, err))?;
+    authorize_order_run(&state, &auth, work_order_id, run_id, SpaceOperation::Write).await?;
     let run = state
         .engine
         .fail_run(run_id, class)

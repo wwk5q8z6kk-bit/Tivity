@@ -18,6 +18,12 @@ Declaring a capability is not authorization to exercise it, and completing
 execution is not evidence of correctness. A Work Order records the intent; the
 grant layer authorizes it; the gate results prove it.
 
+## Reopening evidence over HTTP
+
+Use the work-order ID to retrieve its runs and artifact list. Match the artifact's run ID to the attempt under review, download its content and compare the SHA-256 digest with the digest recorded at execution. The gate results for that attempt identify the evaluator and the outcome. A missing artifact returns HTTP 404.
+
+With authentication enabled, personal orders belong to their requesting principal. A shared order uses current membership in its active collaborative Space. A viewer can inspect the order, including its artifact content and export. Changes require both a write-capable credential and a role with Space write permission. A namespace restriction cannot identify a Space or a personal order. Use a vault identity for this API. List queries apply the same visibility rules before returning results. An inaccessible order returns the same response as an unknown order.
+
 ## Objects
 
 ```text
