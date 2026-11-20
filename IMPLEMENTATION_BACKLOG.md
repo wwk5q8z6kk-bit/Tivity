@@ -1627,6 +1627,7 @@ document, but each one either hides real defects or makes verification lie.
 - **files:** `frontend/src/routes/workspace/`, `frontend/src/lib/api/workOrders.ts`, `frontend/e2e/`
 - **acceptance:** `pnpm --dir frontend exec playwright test reviewer-handoff.spec.ts`. With an authorized order reference and the workspace credential, open its exact run, inspect a check, return to the original canvas and recover the unsent draft. Disconnect or change account and verify that the previous result clears. No credentials in the link.
 - **evidence:** 2026-11-19, [PR #24](https://github.com/wwk5q8z6kk-bit/Tivity/pull/24). All 10 browser tests passed, including changed artifact bytes, revoked access and disconnect. In a separate Chromium run against a local authenticated vault with seeded Space memberships, an author saved a named canvas linked to an executed run. A distinct viewer opened the link, checked the artifact digest and retained the unsent draft. A reader outside the Space could open the canvas but was denied run evidence. Human sign-off is tracked in REVIEW-003.
+- **Evidence pinning (2026-11-19):** In a live authenticated Chromium handoff, an author pinned a run on a named canvas and a distinct Space viewer reopened it with a matching fingerprint. A fixed v1 unit-test vector covers row reordering, removed checks, and changed artifact digests. The browser regression exercises a check changing from pass to fail after save.
 
 #### REVIEW-003 — Record a reviewer decision against an evidence revision
 
@@ -1636,6 +1637,11 @@ document, but each one either hides real defects or makes verification lie.
 - **governing_authority:** ADR 010 action envelope and trust ledger, ADR 012 artifacts and gates
 - **blocked_by:** IK-020, SPACE-005, REVIEW-002 (inferred)
 - **files:** `crates/mv-engine/src/engine/`, `crates/mv-server/src/rest/work_orders.rs`, `frontend/src/routes/workspace/`
+- **implementation sequence:**
+  1. Read the run, checks and artifact versions in one server-side storage snapshot and issue an evidence revision. The client fingerprint on a saved canvas describes what its author saw across separate reads.
+  2. On Accept or Return, derive the reviewer from the authenticated principal, enforce current Space authority and independent review, and compare the expected evidence revision inside the write transaction. Return a conflict with no decision if evidence changed.
+  3. Commit the reason, outcome, evidence revision and Trust Ledger receipt together. Replaying the same submission must return the original receipt. Reject a reused key with a different payload.
+  4. Show the recorded decision on the canvas after an authorized fresh read. Preserve earlier decisions as history when later evidence requires review.
 - **acceptance:** Proposed `cargo test -p mv-server --test reviewer_decision -- --test-threads=1`. Accept or return with a reason, retry the same decision, restart and reopen from another client. Require one receipt, attributable reviewer and original evidence revision. Changed evidence requires re-review. A revoked reviewer cannot reopen restricted content or submit a decision.
 - **evidence:** —
 
