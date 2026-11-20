@@ -1620,13 +1620,13 @@ document, but each one either hides real defects or makes verification lie.
 #### REVIEW-002 — Reopen an authorized result from the command center
 
 - **priority:** P0 — next read-only increment in the command-center plan
-- **status:** not_started
+- **status:** verified
 - **mandate:** `docs/MINDVAULT_NEXT_MASTER_PLAN.md:87` — “deliver a read-only handoff from the command center”
 - **governing_authority:** ADR 010 Space membership, ADR 012 run evidence
 - **blocked_by:** REVIEW-001 (inferred)
 - **files:** `frontend/src/routes/workspace/`, `frontend/src/lib/api/workOrders.ts`, `frontend/e2e/`
-- **acceptance:** Proposed `pnpm --dir frontend exec playwright test reviewer-handoff.spec.ts`. With an authorized order reference and the workspace credential, open its exact run, inspect a check, return to the original canvas and recover the unsent draft. Disconnect or change account and verify that the previous result clears. No credentials in the link.
-- **evidence:** —
+- **acceptance:** `pnpm --dir frontend exec playwright test reviewer-handoff.spec.ts`. With an authorized order reference and the workspace credential, open its exact run, inspect a check, return to the original canvas and recover the unsent draft. Disconnect or change account and verify that the previous result clears. No credentials in the link.
+- **evidence:** 2026-11-19, [PR #24](https://github.com/wwk5q8z6kk-bit/Tivity/pull/24). All 10 browser tests passed, including changed artifact bytes, revoked access and disconnect. In a separate Chromium run against a local authenticated vault with seeded Space memberships, an author saved a named canvas linked to an executed run. A distinct viewer opened the link, checked the artifact digest and retained the unsent draft. A reader outside the Space could open the canvas but was denied run evidence. Human sign-off is tracked in REVIEW-003.
 
 #### REVIEW-003 — Record a reviewer decision against an evidence revision
 

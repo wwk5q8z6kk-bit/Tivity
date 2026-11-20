@@ -85,8 +85,8 @@ test('carries a specific run on a canvas and rechecks access for each reader', a
 	await page.getByLabel('Access token').fill('reviewer');
 	await page.getByRole('button', { name: 'Use token' }).click();
 	await page.getByRole('button', { name: 'Link a work-order run' }).click();
-	await page.getByLabel('Work order', { exact: true }).selectOption(orderId);
-	await page.getByLabel('Run', { exact: true }).selectOption(runId);
+	await page.getByRole('combobox', { name: 'Work order', exact: true }).selectOption(orderId);
+	await page.getByRole('combobox', { name: 'Run', exact: true }).selectOption(runId);
 	await page.getByRole('button', { name: 'Link run', exact: true }).click();
 	await expect(page.getByText('Attempt 2 · completed')).toBeVisible();
 	await page.getByLabel('Canvas name').fill('Friday release');
