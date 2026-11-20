@@ -28,6 +28,7 @@ export const sidebarNavigationGroups: SidebarNavigationGroup[] = [
 		collapsible: false,
 		items: [
 			{ label: 'Dashboard', href: '/' },
+			{ label: 'Command center', href: '/workspace' },
 			{ label: 'Inbox', href: '/inbox' },
 			{ label: 'Daily', href: '/focus' },
 			{ label: 'Search', href: '/search' }

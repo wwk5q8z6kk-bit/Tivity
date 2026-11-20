@@ -1,12 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import {
-		getWorkspaceTree,
-		listWorkspaces,
-		mountWorkspace,
-		readWorkspaceDocument,
-		rebuildWorkspaceProjections,
-		reconcileWorkspace,
+		workspaceApi,
 		type WorkspaceDocumentRead,
 		type WorkspaceSummary,
 		type WorkspaceTree,
@@ -20,11 +15,16 @@
 	import { pushToast } from '$lib/stores/toast';
 	import { workspaceReconciliation } from '$lib/stores/websocket';
 
+	export let token = '';
+	export let namespace: string | undefined = undefined;
+	const { getWorkspaceTree, listWorkspaces, mountWorkspace, readWorkspaceDocument, rebuildWorkspaceProjections, reconcileWorkspace } = workspaceApi(token);
+	let readVersion = 0;
 	let workspaces: WorkspaceSummary[] = [];
 	let selectedWorkspaceId = '';
 	let tree: WorkspaceTree | null = null;
-	let selectedDocument: WorkspaceDocumentRead | null = null;
+	export let selectedDocument: WorkspaceDocumentRead | null = null;
 	let loading = true;
+	let listError = '';
 	let refreshing = false;
 	let rebuilding = false;
 	let reading = false;
@@ -41,7 +41,7 @@
 
 	$: selectedWorkspace =
 		workspaces.find((workspace) => workspace.id === selectedWorkspaceId) ?? null;
-	$: visibleEntries = (tree?.entries ?? []).filter(isEntryVisible);
+	$: visibleEntries = (tree?.entries ?? []).filter(entry => isEntryVisible(entry, collapsedPaths));
 	$: documentCount = tree?.entries.filter((entry) => entry.kind === 'document').length ?? 0;
 	$: folderCount = tree?.entries.filter((entry) => entry.kind === 'directory').length ?? 0;
 	$: pendingProjectionCount =
@@ -81,7 +81,7 @@
 		refreshing = true;
 		try {
 			const [nextWorkspaces, nextTree] = await Promise.all([
-				listWorkspaces(),
+				listWorkspaces(namespace),
 				getWorkspaceTree(workspaceId)
 			]);
 			if (workspaceId !== selectedWorkspaceId || refreshSequence !== filesystemRefreshSequence)
@@ -114,8 +114,9 @@
 
 	async function loadWorkspaces() {
 		loading = true;
+		listError = '';
 		try {
-			workspaces = await listWorkspaces();
+			workspaces = await listWorkspaces(namespace);
 			if (!workspaces.some((workspace) => workspace.id === selectedWorkspaceId)) {
 				selectedWorkspaceId = workspaces[0]?.id ?? '';
 			}
@@ -125,14 +126,17 @@
 				tree = null;
 				selectedDocument = null;
 			}
-		} catch {
-			pushToast('Unable to load mounted workspaces.', 'danger');
+		} catch (err) {
+			listError = err instanceof ApiError && [401, 403].includes(err.status) ? 'Vault access is required to browse these files.' : 'Could not load mounted folders.';
 		} finally {
 			loading = false;
 		}
 	}
 
 	async function selectWorkspace(workspaceId: string) {
+		readVersion++;
+		tree = null;
+		reading = false;
 		selectedWorkspaceId = workspaceId;
 		selectedDocument = null;
 		collapsedPaths = new Set();
@@ -143,7 +147,9 @@
 		if (!selectedWorkspaceId) return;
 		refreshing = true;
 		try {
-			tree = await getWorkspaceTree(selectedWorkspaceId);
+			const id = selectedWorkspaceId;
+			const next = await getWorkspaceTree(id);
+			if (id === selectedWorkspaceId) tree = next;
 		} catch {
 			pushToast('Unable to scan the workspace tree.', 'danger');
 		} finally {
@@ -159,7 +165,9 @@
 			workspaces = workspaces.map((workspace) =>
 				workspace.id === result.workspace.id ? result.workspace : workspace
 			);
-			tree = await getWorkspaceTree(selectedWorkspaceId);
+			const id = selectedWorkspaceId;
+			const next = await getWorkspaceTree(id);
+			if (id === selectedWorkspaceId) tree = next;
 			const changes =
 				result.reconciliation.inserted_documents +
 				result.reconciliation.updated_documents +
@@ -182,7 +190,9 @@
 		rebuilding = true;
 		try {
 			const result = await rebuildWorkspaceProjections(selectedWorkspaceId);
-			tree = await getWorkspaceTree(selectedWorkspaceId);
+			const id = selectedWorkspaceId;
+			const next = await getWorkspaceTree(id);
+			if (id === selectedWorkspaceId) tree = next;
 			const projection = result.projection;
 			pushToast(
 				projection.failed_documents === 0
@@ -223,6 +233,7 @@
 			const displayName = mountDisplayName.trim();
 			const result = await mountWorkspace({
 				root_path: rootPath,
+				namespace,
 				...(displayName ? { display_name: displayName } : {})
 			});
 			workspaces = [
@@ -251,13 +262,17 @@
 
 	async function openDocument(entry: WorkspaceTreeEntry) {
 		if (!selectedWorkspaceId || !entry.document_id) return;
+		const version = ++readVersion;
+		const workspace = selectedWorkspaceId;
+		selectedDocument = null;
 		reading = true;
 		try {
-			selectedDocument = await readWorkspaceDocument(selectedWorkspaceId, entry.document_id);
+			const doc = await readWorkspaceDocument(workspace, entry.document_id);
+			if (workspace === selectedWorkspaceId && version === readVersion) selectedDocument = doc;
 		} catch {
 			pushToast('Unable to read the canonical document.', 'danger');
 		} finally {
-			reading = false;
+			if (version === readVersion) reading = false;
 		}
 	}
 
@@ -268,10 +283,10 @@
 		collapsedPaths = next;
 	}
 
-	function isEntryVisible(entry: WorkspaceTreeEntry): boolean {
+	function isEntryVisible(entry: WorkspaceTreeEntry, collapsed: Set<string>): boolean {
 		let parent = entry.parent_path;
 		while (parent) {
-			if (collapsedPaths.has(parent)) return false;
+			if (collapsed.has(parent)) return false;
 			const separator = parent.lastIndexOf('/');
 			parent = separator === -1 ? null : parent.slice(0, separator);
 		}
@@ -314,14 +329,14 @@
 	<aside
 		class="rounded-xl border border-[rgb(var(--mv-border))] bg-[rgb(var(--mv-panel))]/50 p-3 lg:col-span-4"
 	>
-		<div class="flex items-center justify-between gap-3">
+		<div class="flex flex-wrap items-center justify-between gap-3">
 			<div>
-				<p class="text-xs font-semibold uppercase tracking-[0.14em] text-sky-300">Workspaces</p>
+				<p class="text-xs font-semibold uppercase tracking-[0.14em] text-[rgb(var(--mv-accent))]">Workspaces</p>
 				<p class="mt-1 text-[11px] text-[rgb(var(--mv-muted))]">Canonical Markdown files</p>
 			</div>
-			<div class="flex items-center gap-2">
+			<div class="flex flex-wrap items-center gap-2">
 				<button
-					class="rounded-lg border border-sky-400/40 bg-sky-500/10 px-2.5 py-1.5 text-[11px] text-sky-200 hover:bg-sky-500/20"
+					class="rounded-lg border border-sky-400/40 bg-sky-500/10 px-2.5 py-1.5 text-[11px] text-[rgb(var(--mv-text))] hover:bg-sky-500/20"
 					on:click={() => {
 						showMountForm = !showMountForm;
 						mountError = '';
@@ -410,6 +425,9 @@
 
 		{#if loading}
 			<p class="mt-6 text-xs text-[rgb(var(--mv-muted))]">Loading workspaces…</p>
+		{:else if listError}
+			<p role="alert" class="mt-4 text-sm">{listError}</p>
+			<button class="mt-2 text-xs underline" on:click={loadWorkspaces}>Retry folders</button>
 		{:else if workspaces.length === 0}
 			<div class="mt-5 rounded-lg border border-dashed border-[rgb(var(--mv-border))] p-4">
 				<p class="text-sm font-medium text-[rgb(var(--mv-text))]">No workspace mounted</p>
@@ -418,7 +436,7 @@
 				</p>
 				{#if !showMountForm}
 					<button
-						class="mt-3 text-xs font-medium text-sky-300 hover:text-sky-200"
+						class="mt-3 text-xs font-medium text-[rgb(var(--mv-accent))] hover:text-[rgb(var(--mv-text))]"
 						on:click={() => (showMountForm = true)}
 					>
 						Add your first workspace →
@@ -454,7 +472,7 @@
 					<button
 						class={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition hover:bg-[rgb(var(--mv-panel-strong))] ${
 							selectedDocument?.document_id === entry.document_id
-								? 'bg-sky-500/15 text-sky-200'
+								? 'bg-sky-500/15 text-[rgb(var(--mv-text))]'
 								: 'text-[rgb(var(--mv-text))]/90'
 						}`}
 						style={`padding-left: ${0.5 + depth(entry.relative_path) * 0.9}rem`}
@@ -517,7 +535,7 @@
 					<span
 						class={`rounded-full px-2 py-1 ${
 							selectedDocument.manifest_match === 'current'
-								? 'bg-emerald-500/15 text-emerald-300'
+								? 'bg-emerald-500/15 text-[rgb(var(--mv-text))]'
 								: 'bg-amber-500/15 text-amber-300'
 						}`}
 					>

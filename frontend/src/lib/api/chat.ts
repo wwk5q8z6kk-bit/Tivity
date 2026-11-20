@@ -1,4 +1,4 @@
-import { ApiError, fetchJson } from './client';
+import { ApiError, bearerHeaders, fetchJson } from './client';
 import type { SearchResultDto } from './types';
 
 export interface ChatMessage {
@@ -25,6 +25,7 @@ export type ChatMode = 'native' | 'rag';
 export type ChatProgressStage = 'retrieving' | 'generating';
 
 export interface ChatRequest {
+	namespace?: string;
 	message: string;
 	history?: Array<{ role: 'user' | 'assistant'; content: string }>;
 	limit?: number;
@@ -57,7 +58,7 @@ function toSources(results: SearchResultDto[]): ChatSource[] {
 /**
  * Send a chat message that uses native RAG if the server exposes /api/v1/chat.
  */
-export async function sendChatMessage(request: ChatRequest): Promise<ChatResponse> {
+export async function sendChatMessage(request: ChatRequest, token = ''): Promise<ChatResponse> {
 	const raw = await fetchJson<{
 		answer: string;
 		sources?: ChatSource[];
@@ -66,6 +67,7 @@ export async function sendChatMessage(request: ChatRequest): Promise<ChatRespons
 		grounded?: boolean;
 	}>('/api/v1/chat', {
 		method: 'POST',
+		...(token ? { headers: bearerHeaders(token) } : {}),
 		body: JSON.stringify(request)
 	});
 	const sources = raw.sources ?? [];

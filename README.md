@@ -2,6 +2,12 @@
 
 Tivity brings project delivery and the MindVault knowledge workspace into one application. Open **Work → Delivery** for projects, issues, requirements, and releases. To carry a decision from a task into the vault, post a comment, select **Review for vault**, then choose **Save reference**. Choose **Follow-up task** instead to give the excerpt a new issue title and send it to the vault task inbox. A saved reference records the source project, task, comment, timestamp, and display author. Saving requires access to the vault server.
 
+## Command center
+
+Open **Command center** from the sidebar or dashboard. The left pane holds the vault assistant and navigation. **Files** browses mounted Markdown directories and previews the file on disk. **Projects** opens the delivery workspace, including its project selector, tasks, and document library. **Canvas** opens the vault’s visual workspace. Switching between these views keeps the open file, project, and message draft in place for the current visit.
+
+Choose **Attach excerpt** to include the first 1,000 characters of the open document with a question. The reply links to the vault records used as sources. For a protected vault, open **Vault access** and enter a token for files, canvas, and the assistant. Project sharing uses the delivery workspace’s own credentials. To mount a directory, configure `MINDVAULT_WORKSPACE_ALLOWED_ROOTS` on the vault server and use an administrator credential.
+
 ## Run the combined web app
 
 Use Node 24 and pnpm 10. From the repository root run:

@@ -64,6 +64,11 @@
 			subtitle: 'AI-powered daily planning with priorities and focus blocks.'
 		},
 		{
+			href: '/workspace',
+			title: 'Command center',
+			subtitle: 'Files, projects, and canvas alongside your vault assistant.'
+		},
+		{
 			href: '/delivery',
 			title: 'Project delivery',
 			subtitle: 'Projects, issues, discussions, and release evidence.'
@@ -419,7 +424,7 @@
 	<div class={`flex min-w-0 flex-1 flex-col ${isNotesRoute ? 'h-full' : ''}`}>
 		{#if !isNotesRoute}
 			<header
-				class="sticky top-4 z-20 flex items-center justify-between border border-white/5 bg-[rgb(var(--mv-panel))]/60 backdrop-blur-2xl px-6 py-4 transition-all duration-300 md:mr-4 md:rounded-2xl shadow-lg mx-4 md:mx-0 mt-4 md:mt-4 mb-2"
+				class="sticky top-4 z-20 flex flex-wrap items-center justify-between gap-2 border border-white/5 bg-[rgb(var(--mv-panel))]/60 backdrop-blur-2xl px-6 py-4 transition-all duration-300 md:mr-4 md:rounded-2xl shadow-lg mx-4 md:mx-0 mt-4 md:mt-4 mb-2"
 			>
 				<div class="flex items-center gap-4">
 					<button

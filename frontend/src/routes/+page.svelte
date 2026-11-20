@@ -31,14 +31,14 @@
 
 	// Activity feed: merge recent tasks and notes, sorted by updated_at
 	$: activityItems = [
-		...allTasks.slice(0, 10).map((t) => ({
+		...allTasks.map((t) => ({
 			id: t.id,
 			type: 'task' as const,
 			title: t.title,
 			updated_at: t.updated_at,
 			status: t.status
 		})),
-		...allNotes.slice(0, 10).map((n) => ({
+		...allNotes.map((n) => ({
 			id: n.id,
 			type: 'note' as const,
 			title: n.title ?? 'Untitled',
@@ -78,6 +78,7 @@
 	let doneThisWeek = 0;
 
 	const topActions = [
+		{ label: 'Command center', href: '/workspace', icon: 'M3 5h18v14H3z M9 5v14', color: 'emerald' },
 		{
 			label: 'New Note',
 			href: '/notes',
@@ -437,7 +438,7 @@
 		<div class="mv-section">
 			<h3 class="text-sm font-semibold text-[rgb(var(--mv-text))]">Recent Activity</h3>
 			<div class="mt-3 divide-y divide-[rgb(var(--mv-border))]/40">
-				{#each activityItems as item (item.id)}
+				{#each activityItems as item (item.type + item.id)}
 					<div class="flex items-center gap-3 py-2.5">
 						{#if item.type === 'task'}
 							<div
@@ -477,7 +478,7 @@
 							</div>
 						{/if}
 						<div class="min-w-0 flex-1">
-							<p class="truncate text-sm text-[rgb(var(--mv-text))]">{item.title}</p>
+							<a class="block truncate text-sm hover:underline" href={item.type === 'task' ? '/tasks?task=' + encodeURIComponent(item.id) : '/notes?note=' + encodeURIComponent(item.id)}>{item.title}</a>
 							<p class="text-xs text-[rgb(var(--mv-muted))]">
 								{item.type === 'task' ? 'Task' : 'Note'}
 								{#if item.status}
