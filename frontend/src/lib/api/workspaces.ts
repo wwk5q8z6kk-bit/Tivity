@@ -1,4 +1,4 @@
-import { fetchJson } from './client';
+import { fetchJson, bearerHeaders } from './client';
 
 export type WorkspaceTreeEntryKind = 'directory' | 'document';
 export type WorkspaceManifestMatch = 'current' | 'changed' | 'untracked';
@@ -103,45 +103,70 @@ export interface MountWorkspaceResponse {
 	reconciliation: WorkspaceReconciliation;
 }
 
-export function listWorkspaces(namespace?: string): Promise<WorkspaceSummary[]> {
-	const params = new URLSearchParams();
-	if (namespace) params.set('namespace', namespace);
-	const query = params.toString();
-	return fetchJson<WorkspaceSummary[]>(`/api/v1/workspaces${query ? `?${query}` : ''}`);
+export function workspaceApi(token = '') {
+	function call<T>(path: string, options?: RequestInit) {
+		if (token) return fetchJson<T>(path, { ...options, headers: bearerHeaders(token) });
+		return options ? fetchJson<T>(path, options) : fetchJson<T>(path);
+	}
+
+	function listWorkspaces(namespace?: string): Promise<WorkspaceSummary[]> {
+		const params = new URLSearchParams();
+		if (namespace) params.set('namespace', namespace);
+		const query = params.toString();
+		return call<WorkspaceSummary[]>(`/api/v1/workspaces${query ? `?${query}` : ''}`);
+	}
+
+	function mountWorkspace(request: MountWorkspaceRequest): Promise<MountWorkspaceResponse> {
+		return call<MountWorkspaceResponse>('/api/v1/workspaces', {
+			method: 'POST',
+			body: JSON.stringify(request)
+		});
+	}
+
+	function getWorkspaceTree(workspaceId: string): Promise<WorkspaceTree> {
+		return call<WorkspaceTree>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/tree`);
+	}
+
+	function readWorkspaceDocument(
+		workspaceId: string,
+		documentId: string
+	): Promise<WorkspaceDocumentRead> {
+		return call<WorkspaceDocumentRead>(
+			`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/documents/${encodeURIComponent(documentId)}`
+		);
+	}
+
+	function reconcileWorkspace(workspaceId: string): Promise<ReconcileWorkspaceResponse> {
+		return call<ReconcileWorkspaceResponse>(
+			`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/reconcile`,
+			{ method: 'POST' }
+		);
+	}
+
+	function rebuildWorkspaceProjections(
+		workspaceId: string
+	): Promise<RebuildWorkspaceProjectionsResponse> {
+		return call<RebuildWorkspaceProjectionsResponse>(
+			`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/projections/rebuild`,
+			{ method: 'POST' }
+		);
+	}
+
+	return {
+		listWorkspaces,
+		mountWorkspace,
+		getWorkspaceTree,
+		readWorkspaceDocument,
+		reconcileWorkspace,
+		rebuildWorkspaceProjections
+	};
 }
 
-export function mountWorkspace(request: MountWorkspaceRequest): Promise<MountWorkspaceResponse> {
-	return fetchJson<MountWorkspaceResponse>('/api/v1/workspaces', {
-		method: 'POST',
-		body: JSON.stringify(request)
-	});
-}
-
-export function getWorkspaceTree(workspaceId: string): Promise<WorkspaceTree> {
-	return fetchJson<WorkspaceTree>(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/tree`);
-}
-
-export function readWorkspaceDocument(
-	workspaceId: string,
-	documentId: string
-): Promise<WorkspaceDocumentRead> {
-	return fetchJson<WorkspaceDocumentRead>(
-		`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/documents/${encodeURIComponent(documentId)}`
-	);
-}
-
-export function reconcileWorkspace(workspaceId: string): Promise<ReconcileWorkspaceResponse> {
-	return fetchJson<ReconcileWorkspaceResponse>(
-		`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/reconcile`,
-		{ method: 'POST' }
-	);
-}
-
-export function rebuildWorkspaceProjections(
-	workspaceId: string
-): Promise<RebuildWorkspaceProjectionsResponse> {
-	return fetchJson<RebuildWorkspaceProjectionsResponse>(
-		`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/projections/rebuild`,
-		{ method: 'POST' }
-	);
-}
+export const {
+	listWorkspaces,
+	mountWorkspace,
+	getWorkspaceTree,
+	readWorkspaceDocument,
+	reconcileWorkspace,
+	rebuildWorkspaceProjections
+} = workspaceApi();

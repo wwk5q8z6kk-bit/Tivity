@@ -10,6 +10,8 @@
 	} from '$lib/canvas/jsonCanvas';
 	import { kindColor, kindLabel } from '$lib/utils/kind-helpers';
 
+	export let token = '';
+	export let namespace: string | undefined = undefined;
 	type CanvasCard = {
 		id: string;
 		title: string;
@@ -39,7 +41,7 @@
 
 	onMount(async () => {
 		try {
-			const nodes = await listNodes({ limit: 50 });
+			const nodes = await listNodes({ limit: 50, namespace }, token);
 			const cols = Math.ceil(Math.sqrt(nodes.length));
 			cards = nodes.map((node, i) => ({
 				id: node.id,
@@ -73,7 +75,9 @@
 	});
 
 	function savePositions() {
-		const positions: Record<string, { x: number; y: number }> = {};
+		let positions: Record<string, { x: number; y: number }> = {};
+		try { positions = JSON.parse(localStorage.getItem('mv_canvas_positions') ?? '{}') ?? {}; }
+		catch { /* Start a new layout if the previous one is corrupt. */ }
 		for (const card of cards) {
 			positions[card.id] = { x: card.x, y: card.y };
 		}
