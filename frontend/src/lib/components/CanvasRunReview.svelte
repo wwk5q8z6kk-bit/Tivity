@@ -7,6 +7,7 @@
 		listRuns,
 		listWorkOrders
 	} from '$lib/api/workOrders';
+	import { reviewFingerprint } from '$lib/canvas/reviewEvidence';
 	import RunGateEvidence from './RunGateEvidence.svelte';
 	import type { RunReference } from '$lib/canvas/savedCanvases';
 
@@ -40,7 +41,11 @@
 		]);
 		const run = attempts.find((attempt) => attempt.run_id === ref.runId);
 		if (!run || order.work_order_id !== ref.orderId) throw new Error('Run unavailable');
-		return { order, run, gates, artifacts: artifacts.filter((a) => a.run_id === ref.runId) };
+		const selectedArtifacts = artifacts.filter((a) => a.run_id === ref.runId);
+		const fingerprint = crypto.subtle
+			? await reviewFingerprint(ref.orderId, run, gates, selectedArtifacts)
+			: undefined;
+		return { order, run, gates, artifacts: selectedArtifacts, fingerprint };
 	}
 
 	function review() {
@@ -133,6 +138,31 @@
 		{:then result}
 			<h3 class="font-semibold">{result.order.goal}</h3>
 			<p>Attempt {result.run.attempt_no} · {result.run.status}</p>
+			{#if result.fingerprint}
+				{#if reference?.fingerprint === result.fingerprint}
+					<p role="status">Run evidence matches the pinned version.</p>
+				{:else}
+					{#if reference?.fingerprint}
+						<p role="alert">
+							Run evidence has changed since it was pinned. Review the current checks and artifacts.
+						</p>
+					{/if}
+					<button
+						class="underline"
+						{disabled}
+						on:click={() => {
+							reference = {
+								orderId: result.order.work_order_id,
+								runId: result.run.run_id,
+								fingerprint: result.fingerprint
+							};
+						}}
+						>{reference?.fingerprint
+							? 'Use current evidence for a new copy'
+							: 'Pin current evidence for a saved copy'}</button
+					>
+				{/if}
+			{:else}<p>Open the vault over HTTPS or localhost to compare evidence fingerprints.</p>{/if}
 			<h4>Checks</h4>
 			{#each result.gates as gate}
 				<RunGateEvidence {gate} />
@@ -163,6 +193,7 @@
 			</p>{/await}
 	{/if}
 	{#if reference && !choosing}<p class="text-xs">
-			A saved copy includes the order and run IDs. Each reader needs access to the work order.
+			A saved copy includes the order and run IDs and any evidence fingerprint you pinned. Each
+			reader needs access to the work order.
 		</p>{/if}
 </section>

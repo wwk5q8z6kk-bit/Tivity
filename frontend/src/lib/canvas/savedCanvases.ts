@@ -14,6 +14,7 @@ export interface CardPosition {
 export interface RunReference {
 	orderId: string;
 	runId: string;
+	fingerprint?: string;
 }
 
 export interface CanvasLayout {
@@ -69,6 +70,11 @@ function validLayout(value: unknown): value is CanvasLayout {
 	return (
 		(layout.run === undefined ||
 			(layout.run &&
+				typeof layout.run.orderId === 'string' &&
+				typeof layout.run.runId === 'string' &&
+				(layout.run.fingerprint === undefined ||
+					(typeof layout.run.fingerprint === 'string' &&
+						/^v1:[a-f0-9]{64}$/.test(layout.run.fingerprint))) &&
 				nodeIdPattern.test(layout.run.orderId) &&
 				nodeIdPattern.test(layout.run.runId))) &&
 		Array.isArray(layout.cards) &&

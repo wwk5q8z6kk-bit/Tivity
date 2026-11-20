@@ -17,9 +17,15 @@ test('carries a specific run on a canvas and rechecks access for each reader', a
 	const bytes = 'release evidence';
 	const digest = createHash('sha256').update(bytes).digest('hex');
 	let saved:
-		| { id: string; metadata: { canvas_layout: { run?: { orderId: string; runId: string } } } }
+		| {
+				id: string;
+				metadata: {
+					canvas_layout: { run?: { orderId: string; runId: string; fingerprint?: string } };
+				};
+		  }
 		| undefined;
 	let revoked = false;
+	let checkOutcome = 'pass';
 	let artifactBytes = bytes;
 	await page.route('**/api/v1/**', async (route) => {
 		const path = new URL(route.request().url()).pathname;
@@ -37,7 +43,7 @@ test('carries a specific run on a canvas and rechecks access for each reader', a
 					json: [
 						{
 							gate: 'g2',
-							outcome: 'pass',
+							outcome: checkOutcome,
 							evaluator_actor: 'Release reviewer',
 							evidence_digest: digest,
 							evaluated_at: '2026-11-19T12:00:00Z'
@@ -89,15 +95,21 @@ test('carries a specific run on a canvas and rechecks access for each reader', a
 	await page.getByRole('combobox', { name: 'Run', exact: true }).selectOption(runId);
 	await page.getByRole('button', { name: 'Link run', exact: true }).click();
 	await expect(page.getByText('Attempt 2 · completed')).toBeVisible();
+	await page.getByRole('button', { name: 'Pin current evidence for a saved copy' }).click();
 	await page.getByLabel('Canvas name').fill('Friday release');
 	await page.getByRole('button', { name: 'Save a copy' }).click();
 	await page.getByLabel('Open canvas').selectOption(canvasId);
 	await expect(page).toHaveURL(new RegExp('canvas=' + canvasId));
-	expect(saved?.metadata.canvas_layout.run).toEqual({ orderId, runId });
+	expect(saved?.metadata.canvas_layout.run).toEqual({
+		orderId,
+		runId,
+		fingerprint: expect.stringMatching(/^v1:[0-9a-f]{64}$/)
+	});
 	expect(JSON.stringify(saved)).not.toContain('Verify release readiness');
 	expect(page.url()).not.toContain('reviewer');
 	await page.getByLabel('Message').fill('My release question');
 	await page.getByRole('button', { name: 'Review linked run' }).click();
+	await expect(page.getByText('Run evidence matches the pinned version.')).toBeVisible();
 	await page.getByText('Output integrity', { exact: true }).click();
 	await expect(page.getByText('Release reviewer', { exact: true })).toBeVisible();
 	await expect(page.getByText('Other attempt')).toHaveCount(0);
@@ -114,9 +126,12 @@ test('carries a specific run on a canvas and rechecks access for each reader', a
 	await expect(page.getByText(/Run evidence unavailable/)).toBeVisible();
 	await expect(page.getByText('Release reviewer', { exact: true })).toHaveCount(0);
 	revoked = false;
+	checkOutcome = 'fail';
 	await page.getByRole('button', { name: 'Close run review' }).click();
 	await page.getByRole('button', { name: 'Review linked run' }).click();
 	await expect(page.getByText('Verify release readiness', { exact: true })).toBeVisible();
+	await expect(page.getByText(/Run evidence has changed since it was pinned/)).toBeVisible();
+	await expect(page.getByText('Failed', { exact: true })).toBeVisible();
 	await page.getByRole('button', { name: 'Disconnect vault token' }).click();
 	await expect(page.getByText('Verify release readiness', { exact: true })).toHaveCount(0);
 	await page.getByRole('button', { name: 'Review linked run' }).click();
