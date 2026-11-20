@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
+	import { isTauri } from '@tauri-apps/api/core';
 	import { listNodes } from '$lib/api/nodes';
 	import type { KnowledgeNode } from '$lib/api/types';
 	import { pushToast } from '$lib/stores/toast';
@@ -44,6 +45,7 @@
 
 	let saved: KnowledgeNode[] = [];
 	let opened = '';
+	const canShareUrl = !isTauri() && /^https?:$/.test(location.protocol);
 	let name = '';
 	let destination = '';
 	let excluded = new Set<string>();
@@ -107,10 +109,13 @@
 	}
 
 	async function copyLink() {
+		const item = saved.find(node => node.id === opened);
+		const reference = canShareUrl ? canvasLink(opened).href : (item ? item.title + ' · ' + item.namespace : '');
+		if (!reference) return;
 		try {
-			await navigator.clipboard.writeText(canvasLink(opened).href);
-			message = 'Canvas link copied.';
-		} catch { message = canvasLink(opened).href; }
+			await navigator.clipboard.writeText(reference);
+			message = canShareUrl ? 'Canvas link copied.' : 'Canvas name and namespace copied. Choose it under Open canvas on the other device.';
+		} catch { message = reference; }
 	}
 
 	async function switchCanvas(id: string, updateUrl = true) {
@@ -374,7 +379,7 @@
 				{#each saved as item (item.id)}<option value={item.id}>{item.title} · {item.namespace}</option>{/each}
 			</select>
 		</label>
-		{#if opened}<button class="underline" disabled={busy} on:click={copyLink}>Copy canvas link</button>{/if}
+		{#if opened}<button class="underline" disabled={busy} on:click={copyLink}>{canShareUrl ? 'Copy canvas link' : 'Copy canvas name'}</button>{/if}
 		<form class="flex flex-wrap items-end gap-2" on:submit|preventDefault={saveCopy}>
 			<label class="grid gap-1">Canvas name <input bind:value={name} disabled={busy} maxlength="120" placeholder="Project kickoff" /></label>
 			{#if destinations.length > 1}
