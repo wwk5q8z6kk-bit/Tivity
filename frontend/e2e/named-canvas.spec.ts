@@ -25,7 +25,14 @@ test('reopens only the chosen canvas cards with current vault content and saved 
 			url = new URL(req.url());
 		if (url.pathname.endsWith('/chat') && req.method() === 'POST') {
 			questions.push({ path: url.pathname, body: req.postDataJSON() });
-			return route.fulfill({ json: { answer: 'Check the launch plan.', sources: [] } });
+			return route.fulfill({
+				json: {
+					answer: 'Check the launch plan [1].',
+					sources: [
+						{ node_id: first, title: 'Launch plan', kind: 'task', preview: 'Old excerpt', score: 1 }
+					]
+				}
+			});
 		}
 		if (url.pathname === '/api/v1/nodes' && req.method() === 'POST') {
 			saved = { ...req.postDataJSON(), id: view };
@@ -80,6 +87,23 @@ test('reopens only the chosen canvas cards with current vault content and saved 
 	}
 	expect(questions.map((q) => q.path)).toEqual(Array(2).fill('/api/v1/canvases/' + view + '/chat'));
 	expect(questions[1].body.history).toHaveLength(2);
+	const citation = assistant.getByText('[1] Launch plan', { exact: true }).first();
+	await assistant.getByLabel('Message').fill('My unfinished follow-up');
+	await citation.click();
+	await expect(assistant.getByText('Revised launch plan', { exact: true })).toBeVisible();
+	await expect(assistant.getByRole('link', { name: 'Open full record' })).toHaveAttribute(
+		'href',
+		'/tasks?task=' + first
+	);
+	await expect(assistant.getByLabel('Message')).toHaveValue('My unfinished follow-up');
+	await citation.click();
+	hide = true;
+	await citation.click();
+	await expect(assistant.getByRole('status')).toHaveText(
+		'Source unavailable. Close and reopen to retry.'
+	);
+	await expect(assistant.getByRole('link', { name: 'Open full record' })).toHaveCount(0);
+	hide = false;
 	await assistant.getByRole('button', { name: 'Remove canvas · Launch room' }).click();
 	await assistant.getByLabel('Message').fill('Search the vault');
 	await assistant.getByRole('button', { name: 'Send', exact: true }).click();
