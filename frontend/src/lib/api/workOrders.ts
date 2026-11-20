@@ -23,7 +23,7 @@ export type AgentRunStatus =
 	| 'budget_exhausted';
 
 export type GateId = 'g0' | 'g1' | 'g2' | 'g3' | 'g4' | 'g5' | 'g6' | 'g7';
-export type GateOutcome = 'pass' | 'fail' | 'waived';
+export type GateOutcome = 'pass' | 'fail' | 'blocked';
 export type RiskTier = 'low' | 'standard' | 'high';
 export type EdgeKind =
 	| 'data'
@@ -169,15 +169,19 @@ export function listWorkOrders(status?: WorkOrderStatus): Promise<WorkOrderSumma
 	return fetchJson<WorkOrderSummary[]>(`${BASE}${query ? `?${query}` : ''}`);
 }
 
-export function getWorkOrder(workOrderId: string): Promise<WorkOrderSummary> {
-	return fetchJson<WorkOrderSummary>(`${BASE}/${encodeURIComponent(workOrderId)}`);
+export async function getWorkOrder(workOrderId: string): Promise<WorkOrderSummary> {
+	const detail = await fetchJson<{ work_order: WorkOrderSummary }>(
+		`${BASE}/${encodeURIComponent(workOrderId)}`
+	);
+	return detail.work_order;
 }
 
-export function createWorkOrder(request: CreateWorkOrderRequest): Promise<WorkOrderSummary> {
-	return fetchJson<WorkOrderSummary>(BASE, {
+export async function createWorkOrder(request: CreateWorkOrderRequest): Promise<WorkOrderSummary> {
+	const detail = await fetchJson<{ work_order: WorkOrderSummary }>(BASE, {
 		method: 'POST',
 		body: JSON.stringify(request)
 	});
+	return detail.work_order;
 }
 
 /**
@@ -322,12 +326,12 @@ export const REQUIRED_GATES: Record<RiskTier, GateId[]> = {
 };
 
 export const GATE_LABELS: Record<GateId, string> = {
-	g0: 'Scope within grant',
-	g1: 'Schema registered',
-	g2: 'Outputs verified',
-	g3: 'Provenance resolves',
-	g4: 'Evidence preserved',
+	g0: 'Grant scope',
+	g1: 'Schema validation',
+	g2: 'Output integrity',
+	g3: 'Source provenance',
+	g4: 'Evidence preservation',
 	g5: 'Independent review',
-	g6: 'Ceilings honoured',
+	g6: 'Budget and policy limits',
 	g7: 'Owner approval'
 };
