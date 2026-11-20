@@ -1604,6 +1604,52 @@ document, but each one either hides real defects or makes verification lie.
 
 ---
 
+## Command-center reviewer journey
+
+#### REVIEW-001 — Read recorded check outcomes and evidence in Work Orders
+
+- **priority:** P0 — first engineering increment of the reviewer handoff
+- **status:** verified
+- **mandate:** `docs/MINDVAULT_NEXT_MASTER_PLAN.md:73` — “the recorded evaluator, evaluation time and full evidence digest”
+- **governing_authority:** ADR 012, gate evidence and artifact review
+- **blocked_by:** none
+- **files:** `frontend/src/routes/work-orders/+page.svelte`, `frontend/src/lib/api/workOrders.ts`
+- **acceptance:** `pnpm --dir frontend exec vitest run src/routes/work-orders/page.svelte.spec.ts src/lib/api/workOrders.spec.ts` — pass, fail and blocked are explicit, opening a row reveals the full digest, and detail/create responses yield the selected order.
+- **evidence:** 2026-11-19, `cf974b1`. Both suites passed within the 544-test frontend run. A local vault demo was opened in Chromium and the Output integrity row expanded with Enter. [Captured review](docs/strategy/reviewer-audit/after-checks.png)
+
+#### REVIEW-002 — Reopen an authorized result from the command center
+
+- **priority:** P0 — next read-only increment in the command-center plan
+- **status:** not_started
+- **mandate:** `docs/MINDVAULT_NEXT_MASTER_PLAN.md:87` — “deliver a read-only handoff from the command center”
+- **governing_authority:** ADR 010 Space membership, ADR 012 run evidence
+- **blocked_by:** REVIEW-001 (inferred)
+- **files:** `frontend/src/routes/workspace/`, `frontend/src/lib/api/workOrders.ts`, `frontend/e2e/`
+- **acceptance:** Proposed `pnpm --dir frontend exec playwright test reviewer-handoff.spec.ts`. With an authorized order reference and the workspace credential, open its exact run, inspect a check, return to the original canvas and recover the unsent draft. Disconnect or change account and verify that the previous result clears. No credentials in the link.
+- **evidence:** —
+
+#### REVIEW-003 — Record a reviewer decision against an evidence revision
+
+- **priority:** P1 — release gate for in-app human acceptance
+- **status:** blocked
+- **mandate:** `docs/MINDVAULT_NEXT_MASTER_PLAN.md:80` — “reviewer and reason in a decision receipt”
+- **governing_authority:** ADR 010 action envelope and trust ledger, ADR 012 artifacts and gates
+- **blocked_by:** IK-020, SPACE-005, REVIEW-002 (inferred)
+- **files:** `crates/mv-engine/src/engine/`, `crates/mv-server/src/rest/work_orders.rs`, `frontend/src/routes/workspace/`
+- **acceptance:** Proposed `cargo test -p mv-server --test reviewer_decision -- --test-threads=1`. Accept or return with a reason, retry the same decision, restart and reopen from another client. Require one receipt, attributable reviewer and original evidence revision. Changed evidence requires re-review. A revoked reviewer cannot reopen restricted content or submit a decision.
+- **evidence:** —
+
+#### REVIEW-004 — Test displacement of one recurring release review
+
+- **priority:** P1 — evidence gate before broad workflow replacement
+- **status:** not_started
+- **mandate:** `docs/MINDVAULT_NEXT_MASTER_PLAN.md:89` — “two different reviewers” and “the following cycle”
+- **governing_authority:** ratified Trusted Agent Work strategy, master plan milestone 4
+- **blocked_by:** none for baseline observation. The in-app comparison depends on REVIEW-003.
+- **files:** `docs/strategy/unicorn/WEDGE_VALUE_PROOF_RESULTS.md`, partner-owned migration sample and review notes
+- **acceptance:** Observe the current workflow first. Reconcile a representative migrated project by source ID, including skipped comments, attachments and unmapped statuses. Record the baseline, two reviewers’ task outcomes, time, help requests and the team’s tool choice the following cycle. Publish only aggregate results with partner consent.
+- **evidence:** —
+
 ## Suggested execution order
 
 1. **DOC-001..DOC-007, PROG-001..PROG-003** — a day's work; stops false-completeness
