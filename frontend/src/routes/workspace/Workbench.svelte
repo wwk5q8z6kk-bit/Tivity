@@ -3,7 +3,7 @@
 	import { FolderOpen, LayoutDashboard, PanelsTopLeft, Send } from '@lucide/svelte';
 	import { sendChatMessage, type ChatSource } from '$lib/api/chat';
 	import { describeChatFailure } from '$lib/chat/errors';
-	import { sourceHref } from '$lib/chat/citations';
+	import SourceReader from './SourceReader.svelte';
 	import LibraryWorkspaceBrowser from '$lib/components/LibraryWorkspaceBrowser.svelte';
 	import NotesCanvasView from '$lib/components/NotesCanvasView.svelte';
 	import type { KnowledgeNode } from '$lib/api/types';
@@ -31,6 +31,7 @@
 	let error = '';
 	type Turn = {
 		canvasId?: string;
+		namespace?: string;
 		question: string;
 		attachment?: string;
 		answer: string;
@@ -76,6 +77,7 @@
 					question,
 					attachment: attachedCanvas?.title ?? attachment?.relative_path,
 					canvasId: attachedCanvas?.id,
+					namespace: attachedCanvas?.namespace ?? namespace,
 					answer: response.answer,
 					sources: response.sources
 				}
@@ -115,11 +117,7 @@
 						{#if turn.attachment}<p class="text-xs">{turn.attachment}</p>{/if}
 						<p class="mt-1 whitespace-pre-wrap text-sm">{turn.answer}</p>
 						{#each turn.sources as source, i}
-							<a
-								class="block text-xs underline"
-								href={sourceHref(source.kind, source.node_id, source.title)}
-								>[{i + 1}] {source.title}</a
-							>
+							<SourceReader {source} number={i + 1} {token} namespace={turn.namespace} />
 						{/each}
 					</div>
 				{/each}
