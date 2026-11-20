@@ -28,8 +28,8 @@ use tempfile::TempDir;
 use tower::ServiceExt;
 
 use mv_core::{
-    AgentRun, AutonomyStore, GateId, GateResult, InteroperabilityStore, RiskTier, RunArtifact,
-    StableUri, WorkOrder, WorkOrderBudget, WorkOrderNode, WorkOrderSpend, WriteLease,
+    AgentRun, AutonomyStore, CollabSpaceStore, GateId, GateResult, InteroperabilityStore, RiskTier,
+    RunArtifact, StableUri, WorkOrder, WorkOrderBudget, WorkOrderNode, WorkOrderSpend, WriteLease,
 };
 use mv_engine::config::EngineConfig;
 use mv_engine::engine::MindVaultEngine;

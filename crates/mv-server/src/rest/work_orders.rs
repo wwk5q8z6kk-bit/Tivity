@@ -19,10 +19,11 @@ use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::Engine as _;
 use chrono::{DateTime, Utc};
 use mv_core::{
-    authorize_space_operation, AgentRun, EdgeKind, ExecutorKind, GateId, GateOutcome,
-    IdempotencyKey, InteroperabilityStore, ProvenanceReference, ProvenanceRelation, RetentionClass,
-    RiskTier, RunArtifact, RunFailureClass, Sensitivity, SpaceAuthDecision, SpaceOperation,
-    SpaceState, StableUri, WorkOrder, WorkOrderBudget, WorkOrderExport, WorkOrderStatus,
+    authorize_space_operation, AgentRun, CollabSpaceStore, EdgeKind, ExecutorKind, GateId,
+    GateOutcome, IdempotencyKey, InteroperabilityStore, ProvenanceReference, ProvenanceRelation,
+    RetentionClass, RiskTier, RunArtifact, RunFailureClass, Sensitivity, SpaceAuthDecision,
+    SpaceOperation, SpaceState, StableUri, WorkOrder, WorkOrderBudget, WorkOrderExport,
+    WorkOrderStatus,
 };
 use mv_engine::engine::{
     AdmissionRefusal, ProposedEdge, ProposedNode, ProposedWorkOrder, RunReadiness,
