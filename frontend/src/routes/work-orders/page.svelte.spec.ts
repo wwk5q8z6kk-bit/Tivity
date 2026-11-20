@@ -104,6 +104,24 @@ describe('Work Orders review journey', () => {
 		await expect.element(page.getByRole('button', { name: 'Approve run' })).toBeInTheDocument();
 	});
 
+	it('names each outcome and discloses the recorded evidence', async () => {
+		const results: GateResultView[] = (['pass', 'fail', 'blocked'] as const).map((outcome, i) => ({
+			gate: 'g2',
+			outcome,
+			detail: null,
+			evaluator_actor: 'review-engine',
+			evidence_digest: String(i).repeat(64),
+			evaluated_at: `2026-11-19T12:00:0${i}Z`
+		}));
+		api.listGates.mockResolvedValue(results);
+		render(WorkOrdersPage);
+		for (const label of ['Passed', 'Failed', 'Blocked']) {
+			await expect.element(page.getByText(label, { exact: true })).toBeVisible();
+		}
+		await page.getByText('Failed', { exact: true }).click();
+		await expect.element(page.getByText(results[1].evidence_digest)).toBeVisible();
+	});
+
 	it('separates a service failure from a genuinely empty work queue', async () => {
 		api.listWorkOrders.mockRejectedValue(new Error('offline'));
 

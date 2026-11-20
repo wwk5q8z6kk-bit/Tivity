@@ -302,11 +302,11 @@
 	function gateBadge(outcome: string): string {
 		switch (outcome) {
 			case 'pass':
-				return 'bg-emerald-500/20 text-emerald-300';
+				return 'bg-emerald-500/20 text-[rgb(var(--mv-text))]';
 			case 'fail':
-				return 'bg-red-500/20 text-red-300';
+				return 'bg-red-500/20 text-[rgb(var(--mv-text))]';
 			default:
-				return 'bg-amber-500/20 text-amber-300';
+				return 'bg-amber-500/20 text-[rgb(var(--mv-text))]';
 		}
 	}
 
@@ -730,23 +730,41 @@
 										{#if gatesByRun[run.run_id]?.length}
 											<ul class="mt-2 space-y-1">
 												{#each gatesByRun[run.run_id] as gate (gate.gate + gate.evaluated_at)}
-													<li class="flex flex-wrap items-center gap-2 text-xs">
-														<span
-															class={`rounded px-1.5 py-0.5 text-[11px] ${gateBadge(gate.outcome)}`}
+													<li>
+														<details
+															class="rounded-md border border-[rgb(var(--mv-border))] p-2 text-xs"
 														>
-															{gate.gate.toUpperCase()}
-														</span>
-														<span class="text-[rgb(var(--mv-text))]">
-															{GATE_LABELS[gate.gate] ?? gate.gate}
-														</span>
-														{#if gate.detail}
-															<span class="text-[rgb(var(--mv-muted))]">— {gate.detail}</span>
-														{/if}
-														<span
-															class="ml-auto font-mono text-[10px] text-[rgb(var(--mv-muted))]/70"
-														>
-															{shortDigest(gate.evidence_digest)}
-														</span>
+															<summary
+																class="cursor-pointer text-[rgb(var(--mv-text))] focus-visible:outline focus-visible:outline-2"
+															>
+																<span class="font-medium"
+																	>{GATE_LABELS[gate.gate] ?? gate.gate}</span
+																>
+																<span
+																	class={`ml-1 rounded px-1.5 py-0.5 ${gateBadge(gate.outcome)}`}
+																	>{gate.outcome === 'pass'
+																		? 'Passed'
+																		: gate.outcome === 'fail'
+																			? 'Failed'
+																			: readableStatus(gate.outcome)}</span
+																>
+															</summary>
+															{#if gate.detail}<p class="mt-2">{gate.detail}</p>{/if}
+															<dl class="mt-2 grid gap-1 break-words">
+																<dt>Check</dt>
+																<dd>{gate.gate.toUpperCase()}</dd>
+																<dt>Evaluator</dt>
+																<dd class="break-all">{gate.evaluator_actor}</dd>
+																<dt>Evaluated</dt>
+																<dd>
+																	<time datetime={gate.evaluated_at}
+																		>{formatWhen(gate.evaluated_at)}</time
+																	>
+																</dd>
+																<dt>Evidence digest</dt>
+																<dd class="break-all font-mono">{gate.evidence_digest}</dd>
+															</dl>
+														</details>
 													</li>
 												{/each}
 											</ul>

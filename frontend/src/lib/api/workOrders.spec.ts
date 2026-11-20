@@ -43,7 +43,12 @@ describe('work order api client', () => {
 	});
 
 	it('encodes identifiers so a malformed id cannot alter the path', async () => {
-		await getWorkOrder('../../admin');
+		fetchJson.mockResolvedValueOnce({
+			work_order: { work_order_id: 'wo-1' },
+			nodes: [],
+			edges: []
+		});
+		expect(await getWorkOrder('../../admin')).toEqual({ work_order_id: 'wo-1' });
 		expect(fetchJson).toHaveBeenCalledWith('/api/v1/work-orders/..%2F..%2Fadmin');
 
 		await listGates('a/b', 'c d');
@@ -51,7 +56,12 @@ describe('work order api client', () => {
 	});
 
 	it('sends a work order proposal with its declared write scope', async () => {
-		await createWorkOrder({
+		fetchJson.mockResolvedValueOnce({
+			work_order: { work_order_id: 'wo-2' },
+			nodes: [],
+			edges: []
+		});
+		const created = await createWorkOrder({
 			goal: 'extract candidate decisions',
 			success_criteria: ['decisions carry provenance'],
 			budget: {
@@ -73,12 +83,11 @@ describe('work order api client', () => {
 			]
 		});
 
+		expect(created).toEqual({ work_order_id: 'wo-2' });
 		const [path, init] = fetchJson.mock.calls[0];
 		expect(path).toBe('/api/v1/work-orders');
 		expect(init.method).toBe('POST');
-		expect(JSON.parse(init.body).nodes[0].write_scope).toEqual([
-			'mindvault://schemas/decisions'
-		]);
+		expect(JSON.parse(init.body).nodes[0].write_scope).toEqual(['mindvault://schemas/decisions']);
 	});
 
 	it('reads runs, readiness, gates, and artifacts through the query surface', async () => {
@@ -87,10 +96,7 @@ describe('work order api client', () => {
 		await listArtifacts('wo-1');
 
 		expect(fetchJson).toHaveBeenNthCalledWith(1, '/api/v1/work-orders/wo-1/runs');
-		expect(fetchJson).toHaveBeenNthCalledWith(
-			2,
-			'/api/v1/work-orders/wo-1/runs/run-1/readiness'
-		);
+		expect(fetchJson).toHaveBeenNthCalledWith(2, '/api/v1/work-orders/wo-1/runs/run-1/readiness');
 		expect(fetchJson).toHaveBeenNthCalledWith(3, '/api/v1/work-orders/wo-1/artifacts');
 	});
 
@@ -107,9 +113,7 @@ describe('work order api client', () => {
 		expect(init.method).toBe('POST');
 		// Evidence is attributable, never anonymous — the server refuses a run
 		// that names itself as its own G5 evaluator.
-		expect(JSON.parse(init.body).evaluator_actor).toBe(
-			'mindvault://node/identity/principal/owner'
-		);
+		expect(JSON.parse(init.body).evaluator_actor).toBe('mindvault://node/identity/principal/owner');
 	});
 
 	it('starts a run without claiming autonomy it was not given', async () => {
@@ -144,9 +148,7 @@ describe('work order api client', () => {
 		await recordArtifact('wo-1', 'run-1', {
 			artifact_kind: 'decision-summary',
 			content_base64: 'ZGVjaXNpb25z',
-			provenance: [
-				{ relation: 'WasDerivedFrom', resource: 'mindvault://schemas/meeting' }
-			]
+			provenance: [{ relation: 'WasDerivedFrom', resource: 'mindvault://schemas/meeting' }]
 		});
 
 		const [path, init] = fetchJson.mock.calls[0];
