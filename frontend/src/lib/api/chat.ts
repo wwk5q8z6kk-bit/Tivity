@@ -58,14 +58,18 @@ function toSources(results: SearchResultDto[]): ChatSource[] {
 /**
  * Send a chat message that uses native RAG if the server exposes /api/v1/chat.
  */
-export async function sendChatMessage(request: ChatRequest, token = ''): Promise<ChatResponse> {
+export async function sendChatMessage(
+	request: ChatRequest,
+	token = '',
+	canvasId?: string
+): Promise<ChatResponse> {
 	const raw = await fetchJson<{
 		answer: string;
 		sources?: ChatSource[];
 		provider?: string;
 		mode?: ChatMode;
 		grounded?: boolean;
-	}>('/api/v1/chat', {
+	}>(canvasId ? '/api/v1/canvases/' + encodeURIComponent(canvasId) + '/chat' : '/api/v1/chat', {
 		method: 'POST',
 		...(token ? { headers: bearerHeaders(token) } : {}),
 		body: JSON.stringify(request)
@@ -111,8 +115,10 @@ export async function ragChat(
 	onProgress?.('generating');
 
 	const context = results
-		.map((r, i) => `[${i + 1}] ${r.node.title}
-${(r.node.content ?? '').slice(0, 500)}`)
+		.map(
+			(r, i) => `[${i + 1}] ${r.node.title}
+${(r.node.content ?? '').slice(0, 500)}`
+		)
 		.join('\n\n');
 
 	const historyText = history

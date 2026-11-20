@@ -289,6 +289,7 @@ pub fn create_router_with_cors(state: Arc<AppState>, cors_allowed_origins: &[Str
         .route("/api/v1/assist/links", post(assist_links))
         .route("/api/v1/assist/transform", post(assist_transform))
         .route("/api/v1/chat", post(chat::chat))
+        .route("/api/v1/canvases/:id/chat", post(chat::canvas_chat))
         .route("/api/v1/daily-notes", get(list_daily_notes))
         .route("/api/v1/daily-notes/ensure", post(ensure_daily_note))
         .route("/api/v1/calendar/items", get(list_calendar_items))
@@ -12696,6 +12697,48 @@ mod tests {
             namespace: Some(namespace.to_string()),
             consumer_name: None,
         }
+    }
+
+    #[tokio::test]
+    async fn canvas_chat_uses_only_current_readable_members() {
+        let (state, _dir) = create_state_with_embedding("unknown-provider", "any").await;
+        let member =
+            KnowledgeNode::new(NodeKind::Task, "Schedule the kickoff").with_namespace("alpha");
+        let private = KnowledgeNode::new(NodeKind::Fact, "Other team").with_namespace("beta");
+        let mut canvas = KnowledgeNode::new(NodeKind::SavedView, "Kickoff")
+            .with_namespace("alpha")
+            .with_tags(vec!["tivity-canvas-v1".into()]);
+        canvas.metadata.insert("canvas_layout".into(), serde_json::json!({
+            "cards": [{"id": private.id}, {"id": member.id}, {"id": member.id}, {"id": Uuid::now_v7()}]
+        }));
+        let id = canvas.id;
+        let member_id = member.id;
+        for node in [member, private, canvas] {
+            state.engine.store_node(node).await.unwrap();
+        }
+        let ask = |scope| {
+            chat::canvas_chat(
+                Extension(scoped_reader(scope)),
+                State(state.clone()),
+                Path(id),
+                Json(chat::ChatRequest {
+                    message: "What is next?".into(),
+                    history: None,
+                    limit: None,
+                    strategy: None,
+                    namespace: None,
+                }),
+            )
+        };
+        assert_eq!(ask("beta").await.unwrap_err().0, StatusCode::FORBIDDEN);
+        let Json(reply) = ask("alpha").await.unwrap();
+        assert_eq!(reply.sources.len(), 1);
+        assert_eq!(reply.sources[0].node_id, member_id.to_string());
+        assert!(reply.grounded);
+        state.engine.delete_node(member_id).await.unwrap();
+        let Json(empty) = ask("alpha").await.unwrap();
+        assert!(!empty.grounded);
+        assert!(empty.sources.is_empty());
     }
 
     #[tokio::test]
