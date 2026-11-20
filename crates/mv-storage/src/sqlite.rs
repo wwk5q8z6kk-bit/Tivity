@@ -5827,10 +5827,11 @@ impl InteroperabilityStore for SqliteNodeStore {
         self.with_conn(|connection| self.load_work_order_from_connection(connection, work_order_id))
     }
 
-    async fn list_work_orders(
+    async fn list_work_orders_page(
         &self,
         status: Option<WorkOrderStatus>,
         limit: usize,
+        offset: usize,
     ) -> MvResult<Vec<WorkOrder>> {
         if !(1..=1000).contains(&limit) {
             return Err(MvError::InvalidInput(
@@ -5846,12 +5847,16 @@ impl InteroperabilityStore for SqliteNodeStore {
                      FROM work_orders
                      WHERE (?1 IS NULL OR status = ?1)
                      ORDER BY updated_at DESC, work_order_id ASC
-                     LIMIT ?2",
+                     LIMIT ?2 OFFSET ?3",
                 )
                 .map_err(|err| MvError::Storage(format!("prepare work-order list: {err}")))?;
             let rows = statement
                 .query_map(
-                    params![status.map(|value| value.as_str()), limit as i64],
+                    params![
+                        status.map(|value| value.as_str()),
+                        limit as i64,
+                        offset as i64
+                    ],
                     |row| self.row_to_work_order(row),
                 )
                 .map_err(|err| MvError::Storage(format!("query work orders: {err}")))?;

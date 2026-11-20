@@ -19,10 +19,10 @@ use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::Engine as _;
 use chrono::{DateTime, Utc};
 use mv_core::{
-    AgentRun, EdgeKind, ExecutorKind, GateId, GateOutcome, IdempotencyKey, InteroperabilityStore,
-    ProvenanceReference, ProvenanceRelation, RetentionClass, RiskTier, RunArtifact,
-    RunFailureClass, Sensitivity, StableUri, WorkOrder, WorkOrderBudget, WorkOrderExport,
-    WorkOrderStatus,
+    authorize_space_operation, AgentRun, EdgeKind, ExecutorKind, GateId, GateOutcome,
+    IdempotencyKey, InteroperabilityStore, ProvenanceReference, ProvenanceRelation, RetentionClass,
+    RiskTier, RunArtifact, RunFailureClass, Sensitivity, SpaceAuthDecision, SpaceOperation,
+    SpaceState, StableUri, WorkOrder, WorkOrderBudget, WorkOrderExport, WorkOrderStatus,
 };
 use mv_engine::engine::{
     AdmissionRefusal, ProposedEdge, ProposedNode, ProposedWorkOrder, RunReadiness,
@@ -293,6 +293,7 @@ pub(crate) async fn create_work_order(
     Json(request): Json<CreateWorkOrderRequest>,
 ) -> Result<(StatusCode, Json<WorkOrderDetail>), (StatusCode, String)> {
     authorize_write(&auth)?;
+    authorize_order_credential(&auth)?;
 
     let proposal = build_proposal(&request)?;
     let local_node_id = state
@@ -302,31 +303,6 @@ pub(crate) async fn create_work_order(
         .local_context_node_id()
         .await
         .map_err(crate::rest::map_mv_error)?;
-    // A stable per-subject principal; anonymous local access maps to "owner".
-    let subject = match auth.subject.as_deref() {
-        Some(subject) => subject,
-        None if std::env::var("MINDVAULT_ALLOW_LOCAL_SYSTEM_IDENTITY")
-            .map(|value| {
-                matches!(
-                    value.trim().to_ascii_lowercase().as_str(),
-                    "1" | "true" | "yes" | "on"
-                )
-            })
-            .unwrap_or(false) =>
-        {
-            "local-system"
-        }
-        None => {
-            return Err((
-                StatusCode::UNAUTHORIZED,
-                "missing auth subject; set MINDVAULT_ALLOW_LOCAL_SYSTEM_IDENTITY=1 to allow the local-system transition identity".into(),
-            ));
-        }
-    };
-    let principal = StableUri::principal(
-        local_node_id,
-        Uuid::new_v5(&local_node_id, subject.as_bytes()),
-    );
     let identity = crate::rest::interoperability::CommandIdentity::derive(&auth, local_node_id)
         .map_err(|err| (StatusCode::UNAUTHORIZED, err))?;
     let idempotency_key = IdempotencyKey::parse(&request.idempotency_key)
@@ -345,11 +321,19 @@ pub(crate) async fn create_work_order(
 
     let admitted = state
         .engine
-        .admit_work_order(&principal, &principal, &proposal, action_envelope)
+        .admit_work_order(
+            &identity.principal,
+            &identity.actor,
+            &proposal,
+            action_envelope,
+        )
         .await
         .map_err(crate::rest::map_mv_error)?
         .map_err(map_admission_refusal)?;
 
+    if !permits_order(&state, &auth, &admitted, SpaceOperation::Write).await? {
+        return Err(order_not_found());
+    }
     let detail = load_detail(&state, &admitted).await?;
     Ok((StatusCode::CREATED, Json(detail)))
 }
@@ -370,6 +354,7 @@ pub(crate) async fn start_run(
     Json(request): Json<StartRunRequest>,
 ) -> Result<(StatusCode, Json<StartRunResponse>), (StatusCode, String)> {
     authorize_write(&auth)?;
+    authorized_order(&state, &auth, work_order_id, SpaceOperation::Write).await?;
     let actor = StableUri::parse(&request.actor).map_err(|err| (StatusCode::BAD_REQUEST, err))?;
 
     let started = state
@@ -402,10 +387,11 @@ pub(crate) async fn start_run(
 pub(crate) async fn record_artifact(
     Extension(auth): Extension<AuthContext>,
     State(state): State<Arc<AppState>>,
-    Path((_work_order_id, run_id)): Path<(Uuid, Uuid)>,
+    Path((work_order_id, run_id)): Path<(Uuid, Uuid)>,
     Json(request): Json<RecordArtifactRequest>,
 ) -> Result<(StatusCode, Json<ArtifactView>), (StatusCode, String)> {
     authorize_write(&auth)?;
+    authorize_order_run(&state, &auth, work_order_id, run_id, SpaceOperation::Write).await?;
 
     let payload = BASE64_STANDARD
         .decode(&request.content_base64)
@@ -461,10 +447,11 @@ pub(crate) async fn record_artifact(
 pub(crate) async fn record_gate(
     Extension(auth): Extension<AuthContext>,
     State(state): State<Arc<AppState>>,
-    Path((_work_order_id, run_id)): Path<(Uuid, Uuid)>,
+    Path((work_order_id, run_id)): Path<(Uuid, Uuid)>,
     Json(request): Json<RecordGateRequest>,
 ) -> Result<(StatusCode, Json<GateResultView>), (StatusCode, String)> {
     authorize_write(&auth)?;
+    authorize_order_run(&state, &auth, work_order_id, run_id, SpaceOperation::Write).await?;
 
     let gate: GateId = request
         .gate
@@ -523,9 +510,10 @@ pub(crate) async fn record_gate(
 pub(crate) async fn approve_run(
     Extension(auth): Extension<AuthContext>,
     State(state): State<Arc<AppState>>,
-    Path((_work_order_id, run_id)): Path<(Uuid, Uuid)>,
+    Path((work_order_id, run_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<RunView>, (StatusCode, String)> {
     authorize_write(&auth)?;
+    authorize_order_run(&state, &auth, work_order_id, run_id, SpaceOperation::Write).await?;
     let local_node_id = state
         .engine
         .store
@@ -554,9 +542,10 @@ pub(crate) async fn approve_run(
 pub(crate) async fn execute_run(
     Extension(auth): Extension<AuthContext>,
     State(state): State<Arc<AppState>>,
-    Path((_work_order_id, run_id)): Path<(Uuid, Uuid)>,
+    Path((work_order_id, run_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<ExecuteRunResponse>, (StatusCode, String)> {
     authorize_write(&auth)?;
+    authorize_order_run(&state, &auth, work_order_id, run_id, SpaceOperation::Write).await?;
     let executed = state
         .engine
         .execute_run(run_id)
@@ -579,9 +568,10 @@ pub(crate) async fn execute_run(
 pub(crate) async fn complete_run(
     Extension(auth): Extension<AuthContext>,
     State(state): State<Arc<AppState>>,
-    Path((_work_order_id, run_id)): Path<(Uuid, Uuid)>,
+    Path((work_order_id, run_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<CompleteRunResponse>, (StatusCode, String)> {
     authorize_write(&auth)?;
+    authorize_order_run(&state, &auth, work_order_id, run_id, SpaceOperation::Write).await?;
     match state
         .engine
         .complete_run(run_id)
@@ -613,10 +603,11 @@ pub(crate) async fn complete_run(
 pub(crate) async fn fail_run(
     Extension(auth): Extension<AuthContext>,
     State(state): State<Arc<AppState>>,
-    Path((_work_order_id, run_id)): Path<(Uuid, Uuid)>,
+    Path((work_order_id, run_id)): Path<(Uuid, Uuid)>,
     Json(request): Json<FailRunRequest>,
 ) -> Result<Json<RunView>, (StatusCode, String)> {
     authorize_write(&auth)?;
+    authorize_order_run(&state, &auth, work_order_id, run_id, SpaceOperation::Write).await?;
     let class: RunFailureClass = request
         .failure_class
         .parse()
@@ -634,6 +625,108 @@ pub(crate) async fn fail_run(
 // Queries
 // ---------------------------------------------------------------------------
 
+type HttpError = (StatusCode, String);
+
+fn order_not_found() -> HttpError {
+    (StatusCode::NOT_FOUND, "work order not found".into())
+}
+
+// Namespace tokens have no mapping to a Work Order or a collaborative Space.
+fn authorize_order_credential(auth: &AuthContext) -> Result<(), HttpError> {
+    if auth.namespace.is_some() {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "work orders require a vault identity without a namespace restriction".into(),
+        ));
+    }
+    Ok(())
+}
+
+async fn permits_order(
+    state: &AppState,
+    auth: &AuthContext,
+    order: &WorkOrder,
+    op: SpaceOperation,
+) -> Result<bool, HttpError> {
+    if auth.is_uncredentialed_system_admin() {
+        return Ok(true);
+    }
+    let store = &state.engine.store.nodes;
+    let local = store
+        .local_context_node_id()
+        .await
+        .map_err(crate::rest::map_mv_error)?;
+    let principal = crate::rest::interoperability::CommandIdentity::derive(auth, local)
+        .map_err(|e| (StatusCode::UNAUTHORIZED, e))?
+        .principal;
+    let Some(space_id) = order.space_id else {
+        return Ok(order.principal == principal);
+    };
+    let Some(space) = store
+        .get_space(space_id)
+        .await
+        .map_err(crate::rest::map_mv_error)?
+    else {
+        return Ok(false);
+    };
+    if space.state != SpaceState::Active {
+        return Ok(false);
+    }
+    let id = principal.trailing_uuid().ok_or_else(order_not_found)?;
+    let member = store
+        .get_space_membership(space_id, id)
+        .await
+        .map_err(crate::rest::map_mv_error)?;
+    Ok(
+        authorize_space_operation(member.as_ref(), space_id, op, Utc::now())
+            == SpaceAuthDecision::Allow,
+    )
+}
+
+async fn authorized_order(
+    state: &AppState,
+    auth: &AuthContext,
+    id: Uuid,
+    op: SpaceOperation,
+) -> Result<WorkOrder, HttpError> {
+    authorize_order_credential(auth)?;
+    let order = state
+        .engine
+        .store
+        .nodes
+        .get_work_order(id)
+        .await
+        .map_err(crate::rest::map_mv_error)?
+        .ok_or_else(order_not_found)?;
+    if permits_order(state, auth, &order, op).await? {
+        Ok(order)
+    } else {
+        Err(order_not_found())
+    }
+}
+
+async fn authorize_order_run(
+    state: &AppState,
+    auth: &AuthContext,
+    order_id: Uuid,
+    run_id: Uuid,
+    op: SpaceOperation,
+) -> Result<(), HttpError> {
+    authorized_order(state, auth, order_id, op).await?;
+    let run = state
+        .engine
+        .store
+        .nodes
+        .get_agent_run(run_id)
+        .await
+        .map_err(crate::rest::map_mv_error)?;
+    if run.is_some_and(|r| r.work_order_id == order_id) {
+        Ok(())
+    } else {
+        Err((StatusCode::NOT_FOUND, "run not found".into()))
+    }
+}
+
 /// GET /api/v1/work-orders
 pub(crate) async fn list_work_orders(
     Extension(auth): Extension<AuthContext>,
@@ -649,14 +742,31 @@ pub(crate) async fn list_work_orders(
         .map_err(|err: String| (StatusCode::BAD_REQUEST, err))?;
     let limit = query.limit.unwrap_or(50).clamp(1, 1000);
 
-    let work_orders = state
-        .engine
-        .store
-        .nodes
-        .list_work_orders(status, limit)
-        .await
-        .map_err(crate::rest::map_mv_error)?;
-    Ok(Json(work_orders.iter().map(work_order_summary).collect()))
+    authorize_order_credential(&auth)?;
+    let mut visible = Vec::new();
+    let mut offset = 0;
+    let page_size = limit.clamp(50, 1000);
+    loop {
+        let page = state
+            .engine
+            .store
+            .nodes
+            .list_work_orders_page(status, page_size, offset)
+            .await
+            .map_err(crate::rest::map_mv_error)?;
+        for order in &page {
+            if permits_order(&state, &auth, order, SpaceOperation::Read).await? {
+                visible.push(work_order_summary(order));
+                if visible.len() == limit {
+                    return Ok(Json(visible));
+                }
+            }
+        }
+        offset += page.len();
+        if page.len() < page_size {
+            return Ok(Json(visible));
+        }
+    }
 }
 
 /// GET /api/v1/work-orders/:id
@@ -666,14 +776,7 @@ pub(crate) async fn get_work_order(
     Path(work_order_id): Path<Uuid>,
 ) -> Result<Json<WorkOrderDetail>, (StatusCode, String)> {
     authorize_read(&auth)?;
-    let work_order = state
-        .engine
-        .store
-        .nodes
-        .get_work_order(work_order_id)
-        .await
-        .map_err(crate::rest::map_mv_error)?
-        .ok_or_else(|| (StatusCode::NOT_FOUND, "work order not found".to_string()))?;
+    let work_order = authorized_order(&state, &auth, work_order_id, SpaceOperation::Read).await?;
     Ok(Json(load_detail(&state, &work_order).await?))
 }
 
@@ -684,6 +787,7 @@ pub(crate) async fn list_runs(
     Path(work_order_id): Path<Uuid>,
 ) -> Result<Json<Vec<RunView>>, (StatusCode, String)> {
     authorize_read(&auth)?;
+    authorized_order(&state, &auth, work_order_id, SpaceOperation::Read).await?;
     let runs = state
         .engine
         .store
@@ -698,9 +802,10 @@ pub(crate) async fn list_runs(
 pub(crate) async fn list_gates(
     Extension(auth): Extension<AuthContext>,
     State(state): State<Arc<AppState>>,
-    Path((_work_order_id, run_id)): Path<(Uuid, Uuid)>,
+    Path((work_order_id, run_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<Vec<GateResultView>>, (StatusCode, String)> {
     authorize_read(&auth)?;
+    authorize_order_run(&state, &auth, work_order_id, run_id, SpaceOperation::Read).await?;
     let results = state
         .engine
         .store
@@ -727,9 +832,10 @@ pub(crate) async fn list_gates(
 pub(crate) async fn get_run_readiness(
     Extension(auth): Extension<AuthContext>,
     State(state): State<Arc<AppState>>,
-    Path((_work_order_id, run_id)): Path<(Uuid, Uuid)>,
+    Path((work_order_id, run_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<ReadinessView>, (StatusCode, String)> {
     authorize_read(&auth)?;
+    authorize_order_run(&state, &auth, work_order_id, run_id, SpaceOperation::Read).await?;
     let readiness = state
         .engine
         .run_readiness(run_id)
@@ -745,6 +851,7 @@ pub(crate) async fn list_artifacts(
     Path(work_order_id): Path<Uuid>,
 ) -> Result<Json<Vec<ArtifactView>>, (StatusCode, String)> {
     authorize_read(&auth)?;
+    authorized_order(&state, &auth, work_order_id, SpaceOperation::Read).await?;
     let artifacts = state
         .engine
         .store
@@ -770,6 +877,7 @@ pub(crate) async fn read_artifact_content(
     Path((work_order_id, artifact_id)): Path<(Uuid, Uuid)>,
 ) -> Result<axum::response::Response, (StatusCode, String)> {
     authorize_read(&auth)?;
+    authorized_order(&state, &auth, work_order_id, SpaceOperation::Read).await?;
     let artifact = state
         .engine
         .store
@@ -832,6 +940,7 @@ pub(crate) async fn export_work_order(
     Path(work_order_id): Path<Uuid>,
 ) -> Result<Json<WorkOrderExport>, (StatusCode, String)> {
     authorize_read(&auth)?;
+    authorized_order(&state, &auth, work_order_id, SpaceOperation::Read).await?;
     let export = state
         .engine
         .export_work_order(work_order_id)
@@ -856,6 +965,13 @@ pub(crate) async fn restore_work_order(
     Json(export): Json<WorkOrderExport>,
 ) -> Result<(StatusCode, Json<RestoreSummaryView>), (StatusCode, String)> {
     authorize_write(&auth)?;
+    authorize_order_credential(&auth)?;
+    if !permits_order(&state, &auth, &export.work_order, SpaceOperation::Write).await? {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "cannot restore into this work order scope".into(),
+        ));
+    }
     let summary = state
         .engine
         .restore_work_order(&export)
