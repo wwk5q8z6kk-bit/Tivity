@@ -881,7 +881,8 @@ async fn wedge_value_proof_trusted_work_completes_over_http() {
     drop(_state);
     drop(engine);
     let reopened = Arc::new(MindVaultEngine::init(config).await.unwrap());
-    let router = create_router(Arc::new(AppState::new(reopened.clone())));
+    let review_state = Arc::new(AppState::new(reopened.clone()));
+    let router = create_router(review_state.clone());
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base = format!(
         "http://{}/api/v1/work-orders",
@@ -986,6 +987,25 @@ async fn wedge_value_proof_trusted_work_completes_over_http() {
             .status(),
         StatusCode::NOT_FOUND
     );
+    let event = mv_server::state::AgentNotification::AgentRunTransitioned {
+        work_order_id: work_order_id.to_string(),
+        run_id: run_id.to_string(),
+        status: "completed".into(),
+        failure_class: None,
+        namespace: None,
+    };
+    let viewer_auth = |sub: &str| mv_server::auth::AuthContext {
+        subject: Some(sub.into()),
+        role: mv_server::auth::AuthRole::Read,
+        namespace: None,
+        consumer_name: None,
+    };
+    assert!(
+        event
+            .visible_to(&review_state, &viewer_auth("reviewer"))
+            .await
+    );
+    assert!(!event.visible_to(&review_state, &viewer_auth("other")).await);
     let member = members.last_mut().unwrap();
     member.state = mv_core::MembershipState::Revoked;
     reopened
@@ -997,6 +1017,11 @@ async fn wedge_value_proof_trusted_work_completes_over_http() {
     assert_eq!(
         reviewer.get(content_url).send().await.unwrap().status(),
         StatusCode::NOT_FOUND
+    );
+    assert!(
+        !event
+            .visible_to(&review_state, &viewer_auth("reviewer"))
+            .await
     );
     task.abort();
     std::env::remove_var("MINDVAULT_JWT_SECRET");

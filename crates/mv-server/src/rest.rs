@@ -129,7 +129,7 @@ mod shares;
 #[path = "rest/sync.rs"]
 mod sync;
 #[path = "rest/work_orders.rs"]
-mod work_orders;
+pub(crate) mod work_orders;
 #[path = "rest/workspaces.rs"]
 mod workspaces;
 

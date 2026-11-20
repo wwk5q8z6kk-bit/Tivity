@@ -684,7 +684,7 @@ async fn permits_order(
     )
 }
 
-async fn authorized_order(
+pub(crate) async fn authorized_order(
     state: &AppState,
     auth: &AuthContext,
     id: Uuid,
