@@ -149,7 +149,7 @@ async fn handle_agent_socket(
         loop {
             match rx.recv().await {
                 Ok(notification) => {
-                    if !notification.deliverable_to(auth.namespace.as_deref()) {
+                    if !notification.visible_to(&state, &auth).await {
                         continue;
                     }
 

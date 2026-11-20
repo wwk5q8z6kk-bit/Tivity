@@ -1084,6 +1084,15 @@ pub trait InteroperabilityStore: Send + Sync {
         &self,
         status: Option<WorkOrderStatus>,
         limit: usize,
+    ) -> MvResult<Vec<WorkOrder>> {
+        self.list_work_orders_page(status, limit, 0).await
+    }
+
+    async fn list_work_orders_page(
+        &self,
+        status: Option<WorkOrderStatus>,
+        limit: usize,
+        offset: usize,
     ) -> MvResult<Vec<WorkOrder>>;
 
     async fn list_work_order_nodes(&self, work_order_id: Uuid) -> MvResult<Vec<WorkOrderNode>>;

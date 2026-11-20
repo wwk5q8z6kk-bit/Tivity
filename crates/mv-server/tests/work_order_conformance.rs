@@ -28,8 +28,8 @@ use tempfile::TempDir;
 use tower::ServiceExt;
 
 use mv_core::{
-    AgentRun, AutonomyStore, GateId, GateResult, InteroperabilityStore, RiskTier, RunArtifact,
-    StableUri, WorkOrder, WorkOrderBudget, WorkOrderNode, WorkOrderSpend, WriteLease,
+    AgentRun, AutonomyStore, CollabSpaceStore, GateId, GateResult, InteroperabilityStore, RiskTier,
+    RunArtifact, StableUri, WorkOrder, WorkOrderBudget, WorkOrderNode, WorkOrderSpend, WriteLease,
 };
 use mv_engine::config::EngineConfig;
 use mv_engine::engine::MindVaultEngine;
@@ -672,6 +672,47 @@ async fn wedge_value_proof_trusted_work_completes_over_http() {
     let registered = body_json(registered).await;
     let local_node_id = uuid::Uuid::parse_str(registered["node_id"].as_str().unwrap()).unwrap();
 
+    let workspace = mv_core::CollabWorkspace::new("release", "Release");
+    engine
+        .store
+        .nodes
+        .insert_collab_workspace(&workspace)
+        .await
+        .unwrap();
+    let space = mv_core::Space::new(workspace.id, "review", "Review");
+    engine.store.nodes.insert_space(&space).await.unwrap();
+    let mut members = Vec::new();
+    for (subject, role) in [
+        ("local-system", mv_core::SpaceRole::Member),
+        ("reviewer", mv_core::SpaceRole::Viewer),
+    ] {
+        let identity = mv_core::IdentityRecord::new(
+            local_node_id,
+            subject,
+            mv_core::ActorKind::Human,
+            subject,
+        );
+        engine
+            .store
+            .nodes
+            .upsert_identity_record(&identity)
+            .await
+            .unwrap();
+        let member = mv_core::SpaceMembership::new(
+            space.id,
+            identity.principal_id,
+            identity.actor_kind,
+            role,
+        );
+        engine
+            .store
+            .nodes
+            .upsert_space_membership(&member)
+            .await
+            .unwrap();
+        members.push(member);
+    }
+
     let issued = router
         .clone()
         .oneshot(request(
@@ -702,6 +743,7 @@ async fn wedge_value_proof_trusted_work_completes_over_http() {
             Method::POST,
             "/api/v1/work-orders",
             Some(json!({
+                "space_id": space.id,
                 "goal": "produce a provenance-linked trusted work artifact",
                 "success_criteria": ["engine run completes with digested artifact"],
                 "budget": {
@@ -835,6 +877,154 @@ async fn wedge_value_proof_trusted_work_completes_over_http() {
         1,
         "WATW interim counter must increment on production-path execute"
     );
+    let config = engine.config.clone();
+    drop(_state);
+    drop(engine);
+    let reopened = Arc::new(MindVaultEngine::init(config).await.unwrap());
+    let review_state = Arc::new(AppState::new(reopened.clone()));
+    let router = create_router(review_state.clone());
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!(
+        "http://{}/api/v1/work-orders",
+        listener.local_addr().unwrap()
+    );
+    let secret = uuid::Uuid::now_v7().to_string();
+    std::env::set_var("MINDVAULT_JWT_SECRET", &secret);
+    let task = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+    let client_for = |sub: &str| {
+        let jwt = jsonwebtoken::encode(
+            &jsonwebtoken::Header::default(),
+            &json!({
+                "sub": sub, "role":"read", "exp": chrono::Utc::now().timestamp() + 300
+            }),
+            &jsonwebtoken::EncodingKey::from_secret(secret.as_bytes()),
+        )
+        .unwrap();
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert("authorization", format!("Bearer {jwt}").parse().unwrap());
+        reqwest::Client::builder()
+            .default_headers(headers)
+            .build()
+            .unwrap()
+    };
+    let reviewer = client_for("reviewer");
+    let outsider = client_for("other");
+    let order_url = format!("{base}/{work_order_id}");
+    let content_url = format!("{order_url}/artifacts/{artifact_id}/content");
+    let response = reviewer
+        .get(&content_url)
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap();
+    assert_eq!(response.headers()["x-mindvault-content-digest"], digest);
+    use sha2::Digest;
+    assert_eq!(
+        format!(
+            "{:x}",
+            sha2::Sha256::digest(response.bytes().await.unwrap())
+        ),
+        digest
+    );
+    let saved_gates: Value = reviewer
+        .get(format!("{order_url}/runs/{run_id}/gates"))
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    for gate in gates {
+        assert!(saved_gates
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|g| g["gate"] == *gate && g["outcome"] == "pass"));
+    }
+    for (client, count) in [(&reviewer, 1), (&outsider, 0)] {
+        let orders: Value = client
+            .get(&base)
+            .send()
+            .await
+            .unwrap()
+            .error_for_status()
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        assert_eq!(orders.as_array().unwrap().len(), count);
+    }
+    for suffix in [
+        "",
+        "/export",
+        "/runs",
+        "/artifacts",
+        &format!("/runs/{run_id}/gates"),
+        &format!("/artifacts/{artifact_id}/content"),
+    ] {
+        assert_eq!(
+            outsider
+                .get(format!("{order_url}{suffix}"))
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::NOT_FOUND
+        );
+    }
+    assert_eq!(
+        reviewer
+            .get(format!(
+                "{order_url}/artifacts/{}/content",
+                uuid::Uuid::now_v7()
+            ))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::NOT_FOUND
+    );
+    let event = mv_server::state::AgentNotification::AgentRunTransitioned {
+        work_order_id: work_order_id.to_string(),
+        run_id: run_id.to_string(),
+        status: "completed".into(),
+        failure_class: None,
+        namespace: None,
+    };
+    let viewer_auth = |sub: &str| mv_server::auth::AuthContext {
+        subject: Some(sub.into()),
+        role: mv_server::auth::AuthRole::Read,
+        namespace: None,
+        consumer_name: None,
+    };
+    assert!(
+        event
+            .visible_to(&review_state, &viewer_auth("reviewer"))
+            .await
+    );
+    assert!(!event.visible_to(&review_state, &viewer_auth("other")).await);
+    let member = members.last_mut().unwrap();
+    member.state = mv_core::MembershipState::Revoked;
+    reopened
+        .store
+        .nodes
+        .upsert_space_membership(member)
+        .await
+        .unwrap();
+    assert_eq!(
+        reviewer.get(content_url).send().await.unwrap().status(),
+        StatusCode::NOT_FOUND
+    );
+    assert!(
+        !event
+            .visible_to(&review_state, &viewer_auth("reviewer"))
+            .await
+    );
+    task.abort();
+    std::env::remove_var("MINDVAULT_JWT_SECRET");
 }
 
 async fn body_json(resp: axum::response::Response) -> Value {

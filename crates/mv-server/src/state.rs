@@ -119,23 +119,8 @@ impl AgentNotification {
 }
 
 impl AgentNotification {
-    /// Whether this notification may be delivered to a socket with `scope`.
-    ///
-    /// An unscoped session receives everything. A namespace-scoped session
-    /// receives only notifications carrying that namespace — which means it
-    /// receives no execution-graph events at all, because the governed
-    /// execution graph is not namespace-partitioned: a Work Order is bounded by
-    /// its governing node and its AuthorityGrant, not by a namespace.
-    ///
-    /// That exclusion is deliberate and fails closed. A scoped token is an
-    /// assertion of "limit me to this namespace", and it may belong to a
-    /// delegate rather than the owner (System Principle 8). Pushing vault-wide
-    /// governance signal to it would widen access beyond what was requested.
-    /// Those clients poll the query API instead, where their authorization is
-    /// checked per request.
-    ///
-    /// Named and tested rather than left inline so the exclusion cannot be
-    /// undone by accident.
+    /// First-stage namespace filter. Work-order events also require an order
+    /// access check at the time of delivery.
     pub fn deliverable_to(&self, scope: Option<&str>) -> bool {
         match scope {
             None => true,
@@ -143,18 +128,25 @@ impl AgentNotification {
         }
     }
 
+    /// Check live Space membership or personal ownership before sending an event.
+    pub async fn visible_to(&self, state: &AppState, auth: &crate::auth::AuthContext) -> bool {
+        if !self.deliverable_to(auth.namespace.as_deref()) {
+            return false;
+        }
+        let id = match self {
+            Self::AgentRunTransitioned { work_order_id, .. }
+            | Self::AgentRunGateRecorded { work_order_id, .. } => work_order_id,
+            _ => return true,
+        };
+        let Ok(id) = uuid::Uuid::parse_str(id) else {
+            return false;
+        };
+        crate::rest::work_orders::authorized_order(state, auth, id, mv_core::SpaceOperation::Read)
+            .await
+            .is_ok()
+    }
+
     /// Observation of a run lifecycle transition.
-    ///
-    /// `namespace` is `None` because the execution graph is not namespace-scoped
-    /// data — a Work Order is governed by its governing node URI and its
-    /// AuthorityGrant, not by a namespace.
-    ///
-    /// Consequence, stated rather than discovered later: `handle_agent_socket`
-    /// drops any notification whose namespace does not equal the client's scope,
-    /// so a namespace-scoped WebSocket client receives none of these. Unscoped
-    /// clients receive them all. This is deliberate — bypassing the scope filter
-    /// would push cross-scope signal to a client that asked to be limited — but
-    /// it means a scoped client must use the query API rather than the stream.
     pub fn run_transitioned(run: &mv_core::AgentRun) -> Self {
         Self::AgentRunTransitioned {
             run_id: run.run_id.to_string(),
