@@ -8,6 +8,8 @@ Open **Command center** from the sidebar or dashboard. The left pane holds the v
 
 Choose **Attach excerpt** to include the first 1,000 characters of the open document with a question. The reply links to the vault records used as sources. For a protected vault, open **Vault access** and enter a token for files, canvas, and the assistant. Project sharing uses the delivery workspace’s own credentials. To mount a directory, configure `MINDVAULT_WORKSPACE_ALLOWED_ROOTS` on the vault server and use an administrator credential.
 
+In **Canvas**, arrange the cards, choose the ones you want to keep, enter a name, and select **Save a copy**. The vault saves card references, size, position, pan, and zoom in the chosen namespace. Another client with access can reopen the layout from **Open canvas** or follow its **Copy canvas link** URL. Card titles and content come from the current vault records when opened. Use **Save a copy** again to keep a revised arrangement.
+
 ## Run the combined web app
 
 Use Node 24 and pnpm 10. From the repository root run:
