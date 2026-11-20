@@ -42,6 +42,12 @@ test('carries a specific run on a canvas and rechecks access for each reader', a
 				return route.fulfill({
 					json: {
 						revision: 'server-v1:' + (checkOutcome === 'pass' ? 'a' : 'b').repeat(64),
+						admission_receipt: {
+							event_id: 'admission-1',
+							principal: 'Release lead',
+							actor: 'Release coordinator',
+							occurred_at: '2026-11-19T10:00:00Z'
+						},
 						order,
 						run: { run_id: runId, attempt_no: 2, status: 'completed' },
 						gates: [
@@ -107,6 +113,8 @@ test('carries a specific run on a canvas and rechecks access for each reader', a
 	await page.getByLabel('Message').fill('My release question');
 	await page.getByRole('button', { name: 'Review linked run' }).click();
 	await expect(page.getByText('Run evidence matches the pinned version.')).toBeVisible();
+	await page.getByText('Work order admission receipt', { exact: true }).click();
+	await expect(page.getByText('Release coordinator', { exact: true })).toBeVisible();
 	await page.getByText('Output integrity', { exact: true }).click();
 	await expect(page.getByText('Release reviewer', { exact: true })).toBeVisible();
 	await expect(page.getByText('Other attempt')).toHaveCount(0);

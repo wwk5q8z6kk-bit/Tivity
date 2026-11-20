@@ -812,6 +812,7 @@ fn gate_view(result: mv_core::GateResult) -> GateResultView {
 
 #[derive(Debug, Serialize)]
 pub(crate) struct EvidenceView {
+    admission_receipt: Option<mv_core::WorkOrderAdmissionReceipt>,
     revision: String,
     order: WorkOrderSummary,
     run: RunView,
@@ -834,7 +835,15 @@ pub(crate) async fn get_run_evidence(
         .await
         .map_err(crate::rest::map_mv_error)?
         .ok_or_else(|| (StatusCode::NOT_FOUND, "run not found".into()))?;
+    let admission_receipt = state
+        .engine
+        .store
+        .nodes
+        .work_order_admission_receipt(order_id)
+        .await
+        .map_err(crate::rest::map_mv_error)?;
     Ok(Json(EvidenceView {
+        admission_receipt,
         revision: snapshot.revision(),
         order: work_order_summary(&order),
         run: run_view(&snapshot.run),

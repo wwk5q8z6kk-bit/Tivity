@@ -1,6 +1,27 @@
 # Tivity
 
-Tivity brings a team's issues, task conversations, documents, and agent-run evidence into one workspace. The first workflow is a weekly release review. A release lead can bring in the issues, discuss a blocker on its task, and share a canvas where a teammate can check the evidence behind “Can we ship Friday?”
+Tivity is a local-first command center for personal and team work. Its goal is to let someone follow a piece of work from the note where it started, through the team conversation and the issue it became, to the evidence behind the final decision. Today those steps often span Slack or Block’s Buzz, Linear or Jira, a document library, and an agent session.
+
+## What you can do today
+
+| If you are… | A place to start |
+| --- | --- |
+| Organizing your own work | Capture a thought, write a daily note, browse mounted Markdown folders, and arrange related records on a named canvas. The command center keeps your open file and assistant draft while you move between views. |
+| Running a project | Work with projects, issues, requirements, documents, and releases in Delivery. Preview a Linear or Jira issue export, share a selected board task with the vault, and discuss it with teammates. |
+| Reviewing delegated work | Open a linked internal agent run, inspect its checks, verify an artifact’s bytes, and see whether the evidence changed after someone shared it. |
+| Connecting another tool | Use the CLI or the vault’s APIs to work with records programmatically. The MCP server gives compatible clients an entry point. External agent execution still needs isolation before it can be offered more broadly. |
+
+[Run the combined app](#run-the-combined-web-app) · [Explore the command center](#command-center) · [Import existing issues](#bring-issues-from-linear-or-jira) · [Explore the MCP server](#mcp-server-agent-interop)
+
+## Where the product is headed
+
+Tivity’s design pairs a **private personal vault** with **shared Spaces** governed by membership and grants. A private meeting note, for example, can contain context its author wants to keep. The intended handoff is to share a chosen decision with a named audience, assign the follow-up, and retain a link to the material that audience may read. Today, saving a selected discussion excerpt and reopening evidence with a teammate’s own credentials demonstrate parts of that workflow. A delivery project, vault namespace, and Space each have distinct access and storage behavior.
+
+The next proof is a reviewer recording **accept** or **return** with a reason against an exact evidence revision. Beyond release reviews, the roadmap applies the same model to meeting follow-ups, coding agents, and scheduled reports. A report should be able to show what changed, who owns the next action, and what evidence supports its conclusion. These are planned workflows. The master plan describes their scope and the backlog tracks which parts have been verified. [Master product plan](docs/MINDVAULT_NEXT_MASTER_PLAN.md) · [Implementation backlog](IMPLEMENTATION_BACKLOG.md)
+
+## Walk through a release review
+
+A release lead asks “Can we ship Friday?” The checklist is in a file, an issue has a new blocker, and an agent has produced a result. Here is how a team can pull those pieces together in Tivity today.
 
 | During the review | Where to go in Tivity |
 | --- | --- |
@@ -22,7 +43,7 @@ Choose **Attach excerpt** to include the first 1,000 characters of the open docu
 
 In **Canvas**, arrange the cards, choose the ones you want to keep, enter a name, and select **Save a copy**. The vault saves card references, size, position, pan, and zoom in the chosen namespace. Another client with access can reopen the layout from **Open canvas** or follow its **Copy canvas link** URL on the same web deployment. The desktop app offers **Copy canvas name** for finding the layout on another device. Card titles and content come from the current vault records when opened. Use **Save a copy** again to keep a revised arrangement. To discuss it, open the saved canvas and select **Ask about canvas** in the assistant. Each question reads its current cards from the vault and returns numbered sources. Follow-up questions stay on that canvas until you remove it.
 
-To hand a result to a reviewer, open **Canvas → Link a work-order run**, select the work order and attempt, then **Link run**. **Pin current evidence for a saved copy** pins the server revision for the attempt, checks, and artifact metadata read together in one transaction. Previously saved canvas fingerprints still compare against their original format. **Save a copy** stores the run identifiers and optional fingerprint. On reopening, Tivity flags changes so the reviewer can inspect the latest evidence. A teammate can open that canvas and choose **Review linked run** to inspect the checks and artifact digests. **Check artifact bytes** downloads the selected artifact and compares its SHA-256 digest locally. **Close run review** returns to the canvas with the composer draft intact. Each reader needs their own authorized vault identity. Namespace-only credentials cannot read work orders.
+To hand a result to a reviewer, open **Canvas → Link a work-order run**, select the work order and attempt, then **Link run**. **Pin current evidence for a saved copy** pins the server revision for the attempt, checks, and artifact metadata read together in one transaction. Previously saved canvas fingerprints still compare against their original format. **Save a copy** stores the run identifiers and optional fingerprint. On reopening, Tivity flags changes so the reviewer can inspect the latest evidence. A teammate can open that canvas and choose **Review linked run** to inspect the checks and artifact digests. Expand **Work order admission receipt** to see when the vault admitted the order, the accountable principal, the acting identity, and the event ID. **Check artifact bytes** downloads the selected artifact and compares its SHA-256 digest locally. **Close run review** returns to the canvas with the composer draft intact. Each reader needs their own authorized vault identity. Namespace-only credentials cannot read work orders.
 
 ## Run the combined web app
 

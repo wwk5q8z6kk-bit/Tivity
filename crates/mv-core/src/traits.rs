@@ -1120,6 +1120,10 @@ pub trait InteroperabilityStore: Send + Sync {
         event: &EventEnvelope,
     ) -> MvResult<IdempotentAgentRunCommit>;
 
+    async fn work_order_admission_receipt(
+        &self,
+        order_id: Uuid,
+    ) -> MvResult<Option<WorkOrderAdmissionReceipt>>;
     async fn run_evidence_snapshot(
         &self,
         order_id: Uuid,

@@ -298,6 +298,12 @@ export function recordArtifact(
 export function getRunEvidence(orderId: string, runId: string, token: string) {
 	return readOrderData<{
 		revision: string;
+		admission_receipt?: {
+			event_id: string;
+			principal: string;
+			actor: string;
+			occurred_at: string;
+		} | null;
 		order: WorkOrderSummary;
 		run: AgentRunView;
 		gates: GateResultView[];
