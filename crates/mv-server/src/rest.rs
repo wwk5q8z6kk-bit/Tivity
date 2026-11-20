@@ -255,6 +255,10 @@ pub fn create_router_with_cors(state: Arc<AppState>, cors_allowed_origins: &[Str
             post(interoperability::resume_authority_grant),
         )
         .route(
+            "/api/v1/work-orders/:id/runs/:run_id/evidence",
+            get(work_orders::get_run_evidence),
+        )
+        .route(
             "/api/v1/work-orders/:id/runs/:run_id/readiness",
             get(work_orders::get_run_readiness),
         )

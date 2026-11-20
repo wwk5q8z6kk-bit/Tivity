@@ -1,12 +1,5 @@
 <script lang="ts">
-	import {
-		verifyArtifact,
-		getWorkOrder,
-		listArtifacts,
-		listGates,
-		listRuns,
-		listWorkOrders
-	} from '$lib/api/workOrders';
+	import { verifyArtifact, getRunEvidence, listRuns, listWorkOrders } from '$lib/api/workOrders';
 	import { reviewFingerprint } from '$lib/canvas/reviewEvidence';
 	import RunGateEvidence from './RunGateEvidence.svelte';
 	import type { RunReference } from '$lib/canvas/savedCanvases';
@@ -33,19 +26,19 @@
 	}
 
 	async function readEvidence(ref: RunReference) {
-		const [order, attempts, gates, artifacts] = await Promise.all([
-			getWorkOrder(ref.orderId, token),
-			listRuns(ref.orderId, token),
-			listGates(ref.orderId, ref.runId, token),
-			listArtifacts(ref.orderId, token)
-		]);
-		const run = attempts.find((attempt) => attempt.run_id === ref.runId);
-		if (!run || order.work_order_id !== ref.orderId) throw new Error('Run unavailable');
-		const selectedArtifacts = artifacts.filter((a) => a.run_id === ref.runId);
-		const fingerprint = crypto.subtle
-			? await reviewFingerprint(ref.orderId, run, gates, selectedArtifacts)
-			: undefined;
-		return { order, run, gates, artifacts: selectedArtifacts, fingerprint };
+		const snapshot = await getRunEvidence(ref.orderId, ref.runId, token);
+		if (
+			snapshot.order.work_order_id !== ref.orderId ||
+			snapshot.run.run_id !== ref.runId ||
+			!/^server-v1:[0-9a-f]{64}$/.test(snapshot.revision) ||
+			snapshot.artifacts.some((a) => a.run_id !== ref.runId)
+		)
+			throw new Error('Invalid evidence response');
+		const fingerprint = ref.fingerprint?.startsWith('v1:')
+			? crypto.subtle &&
+				(await reviewFingerprint(ref.orderId, snapshot.run, snapshot.gates, snapshot.artifacts))
+			: snapshot.revision;
+		return { ...snapshot, fingerprint };
 	}
 
 	function review() {
@@ -139,7 +132,7 @@
 			<h3 class="font-semibold">{result.order.goal}</h3>
 			<p>Attempt {result.run.attempt_no} · {result.run.status}</p>
 			{#if result.fingerprint}
-				{#if reference?.fingerprint === result.fingerprint}
+				{#if reference?.fingerprint === result.fingerprint || reference?.fingerprint === result.revision}
 					<p role="status">Run evidence matches the pinned version.</p>
 				{:else}
 					{#if reference?.fingerprint}
@@ -154,7 +147,7 @@
 							reference = {
 								orderId: result.order.work_order_id,
 								runId: result.run.run_id,
-								fingerprint: result.fingerprint
+								fingerprint: result.revision
 							};
 						}}
 						>{reference?.fingerprint

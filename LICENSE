@@ -1,4 +1,4 @@
-MindVault Proprietary License
+Tivity Proprietary License
 
 Copyright (c) 2026 MindVault Contributors. All rights reserved.
 
@@ -32,6 +32,9 @@ ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 OTHER DEALINGS IN THE SOFTWARE.
 
 ---
+
+Separately licensed components retain their own terms, including the Python
+sidecar and the example WASM plugin with MIT package notices.
 
 Third-party notice: the `third_party/lance/` directory contains an
 unmodified/lightly-modified vendored copy of the "lance" project

@@ -37,37 +37,33 @@ test('carries a specific run on a canvas and rechecks access for each reader', a
 			if (path.endsWith(orderId)) return route.fulfill({ json: { work_order: order } });
 			if (path.endsWith('/runs'))
 				return route.fulfill({ json: [{ run_id: runId, attempt_no: 2, status: 'completed' }] });
-			if (path.endsWith('/gates')) {
+			if (path.endsWith('/evidence')) {
 				expect(path).toContain('/runs/' + runId + '/');
 				return route.fulfill({
-					json: [
-						{
-							gate: 'g2',
-							outcome: checkOutcome,
-							evaluator_actor: 'Release reviewer',
-							evidence_digest: digest,
-							evaluated_at: '2026-11-19T12:00:00Z'
-						}
-					]
+					json: {
+						revision: 'server-v1:' + (checkOutcome === 'pass' ? 'a' : 'b').repeat(64),
+						order,
+						run: { run_id: runId, attempt_no: 2, status: 'completed' },
+						gates: [
+							{
+								gate: 'g2',
+								outcome: checkOutcome,
+								evaluator_actor: 'Release reviewer',
+								evidence_digest: digest,
+								evaluated_at: '2026-11-19T12:00:00Z'
+							}
+						],
+						artifacts: [
+							{
+								artifact_id: 'a',
+								run_id: runId,
+								artifact_kind: 'Release evidence',
+								content_digest: digest
+							}
+						]
+					}
 				});
 			}
-			if (path.endsWith('/artifacts'))
-				return route.fulfill({
-					json: [
-						{
-							artifact_id: 'a',
-							run_id: runId,
-							artifact_kind: 'Release evidence',
-							content_digest: digest
-						},
-						{
-							artifact_id: 'b',
-							run_id: 'other',
-							artifact_kind: 'Other attempt',
-							content_digest: digest
-						}
-					]
-				});
 			if (path.endsWith('/content')) return route.fulfill({ body: artifactBytes });
 		}
 		if (path.endsWith('/nodes') && route.request().method() === 'POST') {
@@ -76,11 +72,12 @@ test('carries a specific run on a canvas and rechecks access for each reader', a
 		}
 		if (path.endsWith('/nodes'))
 			return route.fulfill({
-				json: new URL(route.request().url()).searchParams.has('kind')
-					? saved
-						? [saved]
-						: []
-					: [card]
+				json:
+					new URL(route.request().url()).searchParams.get('kind') === 'saved_view'
+						? saved
+							? [saved]
+							: []
+						: [card]
 			});
 		if (path.endsWith(canvasId)) return route.fulfill({ json: saved });
 		if (path.endsWith(cardId)) return route.fulfill({ json: card });
@@ -103,7 +100,7 @@ test('carries a specific run on a canvas and rechecks access for each reader', a
 	expect(saved?.metadata.canvas_layout.run).toEqual({
 		orderId,
 		runId,
-		fingerprint: expect.stringMatching(/^v1:[0-9a-f]{64}$/)
+		fingerprint: expect.stringMatching(/^server-v1:[0-9a-f]{64}$/)
 	});
 	expect(JSON.stringify(saved)).not.toContain('Verify release readiness');
 	expect(page.url()).not.toContain('reviewer');
@@ -136,4 +133,13 @@ test('carries a specific run on a canvas and rechecks access for each reader', a
 	await expect(page.getByText('Verify release readiness', { exact: true })).toHaveCount(0);
 	await page.getByRole('button', { name: 'Review linked run' }).click();
 	await expect(page.getByText(/Run evidence unavailable/)).toBeVisible();
+	await page.goto('/delivery');
+	await page.getByRole('button', { name: 'Shared task discussions' }).click();
+	const thread = page.getByRole('region', { name: 'Shared task discussions' });
+	await thread.getByLabel('Vault namespace').fill('team');
+	await thread.getByLabel('Vault access token').fill('reviewer');
+	await thread.getByRole('button', { name: 'Load tasks' }).click();
+	await thread.getByRole('button', { name: 'Find linked reviews' }).click();
+	await thread.getByRole('link', { name: 'Friday release' }).click();
+	await expect(page).toHaveURL(new RegExp('canvas=' + canvasId));
 });
