@@ -295,6 +295,16 @@ export function recordArtifact(
 	);
 }
 
+export function getRunEvidence(orderId: string, runId: string, token: string) {
+	return readOrderData<{
+		revision: string;
+		order: WorkOrderSummary;
+		run: AgentRunView;
+		gates: GateResultView[];
+		artifacts: ArtifactView[];
+	}>(`${BASE}/${encodeURIComponent(orderId)}/runs/${encodeURIComponent(runId)}/evidence`, token);
+}
+
 export function listArtifacts(workOrderId: string, token = ''): Promise<ArtifactView[]> {
 	return readOrderData<ArtifactView[]>(
 		`${BASE}/${encodeURIComponent(workOrderId)}/artifacts`,

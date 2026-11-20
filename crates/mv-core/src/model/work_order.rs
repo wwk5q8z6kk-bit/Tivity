@@ -697,6 +697,22 @@ pub struct AgentRun {
     pub updated_at: DateTime<Utc>,
 }
 
+/// Evidence from a single database read transaction. Storage returns gates and
+/// artifacts in stable order so independent readers can compare revisions.
+#[derive(Debug, Serialize)]
+pub struct RunEvidenceSnapshot {
+    pub run: AgentRun,
+    pub gates: Vec<GateResult>,
+    pub artifacts: Vec<RunArtifact>,
+}
+
+impl RunEvidenceSnapshot {
+    pub fn revision(&self) -> String {
+        let manifest = serde_json::json!({ "schema": "tivity.run-evidence.v1", "snapshot": self });
+        format!("server-v1:{}", super::canonical_json_sha256(&manifest))
+    }
+}
+
 impl AgentRun {
     pub fn validate(&self) -> Result<(), String> {
         if self.attempt_no == 0 {

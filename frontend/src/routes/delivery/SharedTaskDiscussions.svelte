@@ -3,7 +3,11 @@
 	import { getNode, listNodes } from '$lib/api/nodes';
 	import { ApiError } from '$lib/api/client';
 	import type { KnowledgeNode } from '$lib/api/types';
-	import { boardStatusForVault, deliveryTaskSource } from '../../../../scripts/delivery-task-node.mjs';
+	import {
+		boardStatusForVault,
+		deliveryTaskSource
+	} from '../../../../scripts/delivery-task-node.mjs';
+	import { includesTaskInReview, listCanvases } from '$lib/canvas/savedCanvases';
 	import CommentsPanel from '$lib/components/CommentsPanel.svelte';
 
 	export let initialNamespace: string;
@@ -15,6 +19,17 @@
 	let tasks: KnowledgeNode[] = [];
 	let selected = '';
 	let offset = 0;
+	let reviews: Promise<KnowledgeNode[]> | undefined;
+	$: {
+		selected;
+		connected;
+		reviews = undefined;
+	}
+	function findReviews(taskId: string) {
+		reviews = listCanvases(namespace.trim(), token.trim()).then((canvases) =>
+			canvases.filter((canvas) => includesTaskInReview(canvas, taskId))
+		);
+	}
 	const pageSize = 30;
 
 	const dispatch = createEventDispatcher<{
@@ -131,6 +146,25 @@
 				<button disabled={busy} class="underline justify-self-start" on:click={reviewStatus}
 					>Review status on board</button
 				>
+			{/if}
+			<button
+				disabled={busy}
+				class="underline justify-self-start"
+				on:click={() => findReviews(selected)}>Find linked reviews</button
+			>
+			{#if reviews}
+				{#await reviews}<p role="status">Finding review canvases…</p>
+				{:then matches}
+					{#each matches as canvas}
+						<a
+							class="underline"
+							href={'/workspace?view=canvas&canvas=' + encodeURIComponent(canvas.id)}
+							>{canvas.title}</a
+						>
+					{:else}<p>No review canvases include this task in this namespace.</p>{/each}
+				{:catch}<p role="alert">
+						Could not read review canvases. Check vault access and retry.
+					</p>{/await}
 			{/if}
 			{#key selected}
 				<CommentsPanel

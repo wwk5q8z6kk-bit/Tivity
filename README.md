@@ -1,6 +1,18 @@
 # Tivity
 
-Tivity brings project delivery and the MindVault knowledge workspace into one application. Open **Work → Delivery** for projects, issues, requirements, and releases. To carry a decision from a task into the vault, post a comment, select **Review for vault**, then choose **Save reference**. Choose **Follow-up task** instead to give the excerpt a new issue title and send it to the vault task inbox. A saved reference records the source project, task, comment, timestamp, and display author. Saving requires access to the vault server.
+Tivity brings a team's issues, task conversations, documents, and agent-run evidence into one workspace. The first workflow is a weekly release review. A release lead can bring in the issues, discuss a blocker on its task, and share a canvas where a teammate can check the evidence behind “Can we ship Friday?”
+
+| During the review | Where to go in Tivity |
+| --- | --- |
+| Bring in work tracked in Linear or Jira | Open **Tasks → Import issues from Linear or Jira** to preview a CSV and import the issues into the vault. |
+| Discuss one issue with teammates | Open **Delivery → Shared task discussions**, connect to the team's namespace, and select the task. Readers can see the thread. Writers can post or resolve comments. |
+| Keep a decision from a board conversation | Select **Review for vault** on a board comment. Save the excerpt as a reference or turn it into a follow-up task. The vault records its source. |
+| Check what supports a release claim | In the shared task discussion, choose **Find linked reviews**. Open a named canvas that includes the task and a linked run, then select **Review linked run** to inspect its checks and artifacts. |
+| Work through the supporting documents | Open **Command center → Files** to browse mounted Markdown, or ask the assistant about a saved canvas and inspect the cited records. |
+
+**What a team can move today.** Issue imports, task threads, evidence references, and read-only release reviews are available. The delivery board uses local storage, and shared tasks live in the vault. General team chat, migration of historical comments and attachments, and recorded release sign-off remain gaps. The adoption milestone is a real team running this review in Tivity for two consecutive weeks. [Implementation backlog](IMPLEMENTATION_BACKLOG.md#review-004--test-displacement-of-one-recurring-release-review)
+
+**Source access.** Tivity is publicly viewable under proprietary terms. [License](LICENSE)
 
 ## Command center
 
@@ -10,7 +22,7 @@ Choose **Attach excerpt** to include the first 1,000 characters of the open docu
 
 In **Canvas**, arrange the cards, choose the ones you want to keep, enter a name, and select **Save a copy**. The vault saves card references, size, position, pan, and zoom in the chosen namespace. Another client with access can reopen the layout from **Open canvas** or follow its **Copy canvas link** URL on the same web deployment. The desktop app offers **Copy canvas name** for finding the layout on another device. Card titles and content come from the current vault records when opened. Use **Save a copy** again to keep a revised arrangement. To discuss it, open the saved canvas and select **Ask about canvas** in the assistant. Each question reads its current cards from the vault and returns numbered sources. Follow-up questions stay on that canvas until you remove it.
 
-To hand a result to a reviewer, open **Canvas → Link a work-order run**, select the work order and attempt, then **Link run**. **Pin current evidence for a saved copy** records a fingerprint of the displayed attempt, checks and artifact metadata. **Save a copy** stores the run identifiers and optional fingerprint. On reopening, Tivity flags changes so the reviewer can inspect the latest evidence. A teammate can open that canvas and choose **Review linked run** to inspect the checks and artifact digests. **Check artifact bytes** downloads the selected artifact and compares its SHA-256 digest locally. **Close run review** returns to the canvas with the composer draft intact. Each reader needs their own authorized vault identity. Namespace-only credentials cannot read work orders.
+To hand a result to a reviewer, open **Canvas → Link a work-order run**, select the work order and attempt, then **Link run**. **Pin current evidence for a saved copy** pins the server revision for the attempt, checks, and artifact metadata read together in one transaction. Previously saved canvas fingerprints still compare against their original format. **Save a copy** stores the run identifiers and optional fingerprint. On reopening, Tivity flags changes so the reviewer can inspect the latest evidence. A teammate can open that canvas and choose **Review linked run** to inspect the checks and artifact digests. **Check artifact bytes** downloads the selected artifact and compares its SHA-256 digest locally. **Close run review** returns to the canvas with the composer draft intact. Each reader needs their own authorized vault identity. Namespace-only credentials cannot read work orders.
 
 ## Run the combined web app
 
@@ -49,8 +61,6 @@ node scripts/import-delivery-tasks.mjs --db /path/to/tivity.db --project PROJECT
 Add `--apply` to create vault tasks. The importer opens the source read-only, maps task statuses, preserves source IDs and timestamps, and prints a receipt for each accepted task. It defaults to the local vault on port 9470 and reads `MINDVAULT_AUTH_TOKEN` when set. Use `--server` to select another vault. Repeating an unchanged import with the same principal reuses the existing node-create keys. A changed source record can yield a conflict and needs reconciliation. Discussion excerpts remain individually reviewable through the UI. Other record types and bulk browser-origin migration still require migration support.
 
 ## MindVault foundation
-
-# MindVault
 
 MindVault is evolving from a local-first knowledge memory system into a
 sovereign, interoperable context fabric for humans, organizations,
@@ -834,5 +844,4 @@ For full local pre-submit validation:
 
 ## License
 
-MindVault is proprietary, all-rights-reserved software. See
-[`LICENSE`](LICENSE) for the full terms.
+The Tivity Proprietary License reserves rights to the application. It permits viewing the source and requires written permission for use, modification, hosting, and redistribution as described in the license. Components with separate license notices retain those terms, including the MIT-labelled Python sidecar and example WASM plugin, and the Apache-2.0 Lance dependency. [License](LICENSE) · [Attributions](ATTRIBUTIONS.md)

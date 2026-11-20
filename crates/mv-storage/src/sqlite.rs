@@ -6116,6 +6116,32 @@ impl InteroperabilityStore for SqliteNodeStore {
         })
     }
 
+    async fn run_evidence_snapshot(
+        &self,
+        order_id: Uuid,
+        run_id: Uuid,
+    ) -> MvResult<Option<RunEvidenceSnapshot>> {
+        self.with_conn(|connection| {
+            let tx = connection
+                .unchecked_transaction()
+                .map_err(|e| MvError::Storage(e.to_string()))?;
+            let Some(run) = self.load_agent_run_from_connection(&tx, run_id)? else {
+                return Ok(None);
+            };
+            if run.work_order_id != order_id {
+                return Ok(None);
+            }
+            let gates = self.gate_results_on(&tx, run_id)?;
+            let artifacts = self.artifacts_on(&tx, order_id, Some(run_id))?;
+            tx.commit().map_err(|e| MvError::Storage(e.to_string()))?;
+            Ok(Some(RunEvidenceSnapshot {
+                run,
+                gates,
+                artifacts,
+            }))
+        })
+    }
+
     async fn get_agent_run(&self, run_id: Uuid) -> MvResult<Option<AgentRun>> {
         self.with_conn(|connection| self.load_agent_run_from_connection(connection, run_id))
     }
@@ -6494,42 +6520,7 @@ impl InteroperabilityStore for SqliteNodeStore {
     }
 
     async fn list_gate_results(&self, run_id: Uuid) -> MvResult<Vec<GateResult>> {
-        self.with_conn(|connection| {
-            let mut statement = connection
-                .prepare(
-                    "SELECT result_id, run_id, work_order_id, gate, outcome,
-                            evaluator_actor_uri, evidence_digest, detail, evaluated_at, created_at
-                     FROM agent_run_gate_results
-                     WHERE run_id = ?1
-                     ORDER BY gate ASC",
-                )
-                .map_err(|err| MvError::Storage(format!("prepare gate list: {err}")))?;
-            let rows = statement
-                .query_map(params![run_id.to_string()], |row| {
-                    let gate_text: String = row.get(3)?;
-                    let outcome_text: String = row.get(4)?;
-                    Ok(GateResult {
-                        result_id: parse_uuid_str(0, &row.get::<_, String>(0)?)?,
-                        run_id: parse_uuid_str(1, &row.get::<_, String>(1)?)?,
-                        work_order_id: parse_uuid_str(2, &row.get::<_, String>(2)?)?,
-                        gate: gate_text
-                            .parse()
-                            .map_err(|err: String| Self::as_sql_conversion_error(3, err))?,
-                        outcome: outcome_text
-                            .parse()
-                            .map_err(|err: String| Self::as_sql_conversion_error(4, err))?,
-                        evaluator_actor: StableUri::parse(row.get::<_, String>(5)?)
-                            .map_err(|err| Self::as_sql_conversion_error(5, err))?,
-                        evidence_digest: row.get(6)?,
-                        detail: row.get(7)?,
-                        evaluated_at: parse_dt_strict(8, &row.get::<_, String>(8)?)?,
-                        created_at: parse_dt_strict(9, &row.get::<_, String>(9)?)?,
-                    })
-                })
-                .map_err(|err| MvError::Storage(format!("query gate results: {err}")))?;
-            rows.collect::<rusqlite::Result<Vec<_>>>()
-                .map_err(|err| MvError::Storage(format!("read gate result: {err}")))
-        })
+        self.with_conn(|connection| self.gate_results_on(connection, run_id))
     }
 
     async fn record_run_artifact(
@@ -6629,31 +6620,7 @@ impl InteroperabilityStore for SqliteNodeStore {
     }
 
     async fn list_run_artifacts(&self, work_order_id: Uuid) -> MvResult<Vec<RunArtifact>> {
-        self.with_conn(|connection| {
-            let mut statement = connection
-                .prepare(
-                    "SELECT artifact_id, artifact_uri, run_id, work_order_id, artifact_kind,
-                            content_digest, schema_uri, schema_version, sensitivity,
-                            retention, created_at
-                     FROM agent_run_artifacts
-                     WHERE work_order_id = ?1
-                     ORDER BY created_at ASC, artifact_id ASC",
-                )
-                .map_err(|err| MvError::Storage(format!("prepare artifact list: {err}")))?;
-            let rows = statement
-                .query_map(params![work_order_id.to_string()], |row| {
-                    self.row_to_run_artifact(row)
-                })
-                .map_err(|err| MvError::Storage(format!("query run artifacts: {err}")))?;
-            let mut artifacts = rows
-                .collect::<rusqlite::Result<Vec<_>>>()
-                .map_err(|err| MvError::Storage(format!("read run artifact: {err}")))?;
-            for artifact in &mut artifacts {
-                artifact.provenance =
-                    self.load_artifact_provenance(connection, artifact.artifact_id)?;
-            }
-            Ok(artifacts)
-        })
+        self.with_conn(|connection| self.artifacts_on(connection, work_order_id, None))
     }
 
     async fn restore_work_order_graph(
@@ -7142,6 +7109,75 @@ impl SqliteNodeStore {
             ));
         }
         Ok(())
+    }
+
+    fn gate_results_on(&self, connection: &Connection, run_id: Uuid) -> MvResult<Vec<GateResult>> {
+        let mut statement = connection
+            .prepare(
+                "SELECT result_id, run_id, work_order_id, gate, outcome,
+                            evaluator_actor_uri, evidence_digest, detail, evaluated_at, created_at
+                     FROM agent_run_gate_results
+                     WHERE run_id = ?1
+                     ORDER BY gate ASC",
+            )
+            .map_err(|err| MvError::Storage(format!("prepare gate list: {err}")))?;
+        let rows = statement
+            .query_map(params![run_id.to_string()], |row| {
+                let gate_text: String = row.get(3)?;
+                let outcome_text: String = row.get(4)?;
+                Ok(GateResult {
+                    result_id: parse_uuid_str(0, &row.get::<_, String>(0)?)?,
+                    run_id: parse_uuid_str(1, &row.get::<_, String>(1)?)?,
+                    work_order_id: parse_uuid_str(2, &row.get::<_, String>(2)?)?,
+                    gate: gate_text
+                        .parse()
+                        .map_err(|err: String| Self::as_sql_conversion_error(3, err))?,
+                    outcome: outcome_text
+                        .parse()
+                        .map_err(|err: String| Self::as_sql_conversion_error(4, err))?,
+                    evaluator_actor: StableUri::parse(row.get::<_, String>(5)?)
+                        .map_err(|err| Self::as_sql_conversion_error(5, err))?,
+                    evidence_digest: row.get(6)?,
+                    detail: row.get(7)?,
+                    evaluated_at: parse_dt_strict(8, &row.get::<_, String>(8)?)?,
+                    created_at: parse_dt_strict(9, &row.get::<_, String>(9)?)?,
+                })
+            })
+            .map_err(|err| MvError::Storage(format!("query gate results: {err}")))?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(|err| MvError::Storage(format!("read gate result: {err}")))
+    }
+
+    fn artifacts_on(
+        &self,
+        connection: &Connection,
+        work_order_id: Uuid,
+        run_id: Option<Uuid>,
+    ) -> MvResult<Vec<RunArtifact>> {
+        let mut statement = connection
+            .prepare(
+                "SELECT artifact_id, artifact_uri, run_id, work_order_id, artifact_kind,
+                            content_digest, schema_uri, schema_version, sensitivity,
+                            retention, created_at
+                     FROM agent_run_artifacts
+                     WHERE work_order_id = ?1 AND (?2 IS NULL OR run_id = ?2)
+                     ORDER BY created_at ASC, artifact_id ASC",
+            )
+            .map_err(|err| MvError::Storage(format!("prepare artifact list: {err}")))?;
+        let rows = statement
+            .query_map(
+                params![work_order_id.to_string(), run_id.map(|id| id.to_string())],
+                |row| self.row_to_run_artifact(row),
+            )
+            .map_err(|err| MvError::Storage(format!("query run artifacts: {err}")))?;
+        let mut artifacts = rows
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(|err| MvError::Storage(format!("read run artifact: {err}")))?;
+        for artifact in &mut artifacts {
+            artifact.provenance =
+                self.load_artifact_provenance(connection, artifact.artifact_id)?;
+        }
+        Ok(artifacts)
     }
 
     fn load_agent_run_from_connection(

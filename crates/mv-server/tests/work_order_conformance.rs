@@ -810,6 +810,17 @@ async fn wedge_value_proof_trusted_work_completes_over_http() {
         assert_eq!(approved.status(), StatusCode::OK, "approve parked run");
     }
 
+    let snapshot_path = format!("/api/v1/work-orders/{work_order_id}/runs/{run_id}/evidence");
+    let before = body_json(
+        router
+            .clone()
+            .oneshot(request(Method::GET, &snapshot_path, None))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(before["run"]["run_id"], run_id);
+    assert_eq!(before["artifacts"], json!([]));
     let executed = router
         .clone()
         .oneshot(request(
@@ -855,6 +866,18 @@ async fn wedge_value_proof_trusted_work_completes_over_http() {
     let body: Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(body["executor"], "engine");
     assert_eq!(body["run_id"], run_id);
+
+    let after = body_json(
+        router
+            .clone()
+            .oneshot(request(Method::GET, &snapshot_path, None))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_ne!(before["revision"], after["revision"]);
+    assert_eq!(after["artifacts"][0]["content_digest"], digest);
+    assert_eq!(after["run"]["status"], "completed");
 
     // Duplicate execute must not silently succeed against a completed run.
     let replay = router
@@ -926,6 +949,22 @@ async fn wedge_value_proof_trusted_work_completes_over_http() {
             sha2::Sha256::digest(response.bytes().await.unwrap())
         ),
         digest
+    );
+    let snapshot_url = format!("{order_url}/runs/{run_id}/evidence");
+    let reopened_snapshot: Value = reviewer
+        .get(&snapshot_url)
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(reopened_snapshot, after);
+    assert_eq!(
+        outsider.get(&snapshot_url).send().await.unwrap().status(),
+        StatusCode::NOT_FOUND
     );
     let saved_gates: Value = reviewer
         .get(format!("{order_url}/runs/{run_id}/gates"))
@@ -1014,6 +1053,10 @@ async fn wedge_value_proof_trusted_work_completes_over_http() {
         .upsert_space_membership(member)
         .await
         .unwrap();
+    assert_eq!(
+        reviewer.get(&snapshot_url).send().await.unwrap().status(),
+        StatusCode::NOT_FOUND
+    );
     assert_eq!(
         reviewer.get(content_url).send().await.unwrap().status(),
         StatusCode::NOT_FOUND

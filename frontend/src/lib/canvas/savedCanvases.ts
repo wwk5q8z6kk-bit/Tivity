@@ -42,6 +42,16 @@ export async function listCanvases(namespace: string | undefined, token: string)
 	}
 }
 
+export function includesTaskInReview(canvas: KnowledgeNode, taskId: string) {
+	const layout = canvas.metadata?.canvas_layout;
+	return (
+		isSavedCanvas(canvas) &&
+		validLayout(layout) &&
+		!!layout.run &&
+		layout.cards.some((card) => card.id === taskId)
+	);
+}
+
 export function saveCanvas(
 	name: string,
 	namespace: string,
@@ -74,7 +84,7 @@ function validLayout(value: unknown): value is CanvasLayout {
 				typeof layout.run.runId === 'string' &&
 				(layout.run.fingerprint === undefined ||
 					(typeof layout.run.fingerprint === 'string' &&
-						/^v1:[a-f0-9]{64}$/.test(layout.run.fingerprint))) &&
+						/^(?:server-)?v1:[a-f0-9]{64}$/.test(layout.run.fingerprint))) &&
 				nodeIdPattern.test(layout.run.orderId) &&
 				nodeIdPattern.test(layout.run.runId))) &&
 		Array.isArray(layout.cards) &&

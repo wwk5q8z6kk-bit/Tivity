@@ -1638,12 +1638,12 @@ document, but each one either hides real defects or makes verification lie.
 - **blocked_by:** IK-020, SPACE-005, REVIEW-002 (inferred)
 - **files:** `crates/mv-engine/src/engine/`, `crates/mv-server/src/rest/work_orders.rs`, `frontend/src/routes/workspace/`
 - **implementation sequence:**
-  1. Read the run, checks and artifact versions in one server-side storage snapshot and issue an evidence revision. The client fingerprint on a saved canvas describes what its author saw across separate reads.
+  1. Read the run, checks and artifact versions in one server-side storage snapshot and issue an evidence revision. The canvas reads `GET /api/v1/work-orders/:id/runs/:run_id/evidence` and saves the returned server revision. Legacy fingerprints compare against the same snapshot using the original client algorithm.
   2. On Accept or Return, derive the reviewer from the authenticated principal, enforce current Space authority and independent review, and compare the expected evidence revision inside the write transaction. Return a conflict with no decision if evidence changed.
   3. Commit the reason, outcome, evidence revision and Trust Ledger receipt together. Replaying the same submission must return the original receipt. Reject a reused key with a different payload.
   4. Show the recorded decision on the canvas after an authorized fresh read. Preserve earlier decisions as history when later evidence requires review.
 - **acceptance:** Proposed `cargo test -p mv-server --test reviewer_decision -- --test-threads=1`. Accept or return with a reason, retry the same decision, restart and reopen from another client. Require one receipt, attributable reviewer and original evidence revision. Changed evidence requires re-review. A revoked reviewer cannot reopen restricted content or submit a decision.
-- **evidence:** —
+- **snapshot coverage:** `wedge_value_proof_trusted_work_completes_over_http` covers revision changes on execution, exact content after restart, and denied access after revocation. `frontend/e2e/reviewer-handoff.spec.ts` exercises finding a linked review from the shared task discussion. Decision receipts remain blocked on the dependencies above.
 
 #### REVIEW-004 — Test displacement of one recurring release review
 

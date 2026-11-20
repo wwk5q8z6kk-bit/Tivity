@@ -799,6 +799,50 @@ pub(crate) async fn list_runs(
     Ok(Json(runs.iter().map(run_view).collect()))
 }
 
+fn gate_view(result: mv_core::GateResult) -> GateResultView {
+    GateResultView {
+        gate: result.gate.as_str().into(),
+        outcome: result.outcome.as_str().into(),
+        evaluator_actor: result.evaluator_actor.as_str().into(),
+        evidence_digest: result.evidence_digest,
+        detail: result.detail,
+        evaluated_at: result.evaluated_at,
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct EvidenceView {
+    revision: String,
+    order: WorkOrderSummary,
+    run: RunView,
+    gates: Vec<GateResultView>,
+    artifacts: Vec<ArtifactView>,
+}
+
+pub(crate) async fn get_run_evidence(
+    Extension(auth): Extension<AuthContext>,
+    State(state): State<Arc<AppState>>,
+    Path((order_id, run_id)): Path<(Uuid, Uuid)>,
+) -> Result<Json<EvidenceView>, HttpError> {
+    authorize_read(&auth)?;
+    let order = authorized_order(&state, &auth, order_id, SpaceOperation::Read).await?;
+    let snapshot = state
+        .engine
+        .store
+        .nodes
+        .run_evidence_snapshot(order_id, run_id)
+        .await
+        .map_err(crate::rest::map_mv_error)?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, "run not found".into()))?;
+    Ok(Json(EvidenceView {
+        revision: snapshot.revision(),
+        order: work_order_summary(&order),
+        run: run_view(&snapshot.run),
+        gates: snapshot.gates.into_iter().map(gate_view).collect(),
+        artifacts: snapshot.artifacts.iter().map(artifact_view).collect(),
+    }))
+}
+
 /// GET /api/v1/work-orders/:id/runs/:run_id/gates
 pub(crate) async fn list_gates(
     Extension(auth): Extension<AuthContext>,
@@ -814,19 +858,7 @@ pub(crate) async fn list_gates(
         .list_gate_results(run_id)
         .await
         .map_err(crate::rest::map_mv_error)?;
-    Ok(Json(
-        results
-            .into_iter()
-            .map(|result| GateResultView {
-                gate: result.gate.as_str().into(),
-                outcome: result.outcome.as_str().into(),
-                evaluator_actor: result.evaluator_actor.as_str().into(),
-                evidence_digest: result.evidence_digest,
-                detail: result.detail,
-                evaluated_at: result.evaluated_at,
-            })
-            .collect(),
-    ))
+    Ok(Json(results.into_iter().map(gate_view).collect()))
 }
 
 /// GET /api/v1/work-orders/:id/runs/:run_id/readiness
