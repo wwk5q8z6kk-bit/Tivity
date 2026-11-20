@@ -74,4 +74,10 @@ test('reopens only the chosen canvas cards with current vault content and saved 
 	await page.getByLabel('Open canvas').selectOption(view);
 	await expect(page.getByText(/1 saved card.*no longer available/)).toBeVisible();
 	await expect(canvas.getByRole('button')).toHaveCount(0);
+
+	await page.addInitScript(() => Object.defineProperty(window, 'isTauri', { value: true }));
+	await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+	await page.reload();
+	await page.getByRole('button', { name: 'Copy canvas name' }).click();
+	expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('Launch room · team');
 });
