@@ -10,7 +10,8 @@
 		exportToJsonCanvas,
 		type JsonCanvasDocument
 	} from '$lib/canvas/jsonCanvas';
-	import { isSavedCanvas, listCanvases, openCanvas, saveCanvas } from '$lib/canvas/savedCanvases';
+	import { isSavedCanvas, listCanvases, openCanvas, saveCanvas, type RunReference } from '$lib/canvas/savedCanvases';
+	import CanvasRunReview from './CanvasRunReview.svelte';
 	import { kindColor, kindLabel } from '$lib/utils/kind-helpers';
 
 	export let token = '';
@@ -46,6 +47,7 @@
 
 	let saved: KnowledgeNode[] = [];
 	let opened = '';
+	let runReference: RunReference | undefined;
 	const canShareUrl = !isTauri() && /^https?:$/.test(location.protocol);
 	let name = '';
 	let destination = '';
@@ -55,7 +57,7 @@
 	let libraryError = '';
 	let draftKey = '';
 	let libraryVersion = 0;
-	let overview: {cards: CanvasCard[]; pan: typeof pan; zoom: number} | null = null;
+	let overview: {cards: CanvasCard[]; pan: typeof pan; zoom: number; runReference?: RunReference} | null = null;
 	$: destinations = [...new Set(cards.map(card => card.namespace))].sort();
 	$: target = destinations.includes(destination) ? destination : destinations[0];
 
@@ -90,7 +92,7 @@
 		busy = true;
 		try {
 			draftKey ||= crypto.randomUUID();
-			const layout = { cards: included.map(({id,x,y,width,height}) => ({id,x,y,width,height})), zoom, pan: {...pan} };
+			const layout = { cards: included.map(({id,x,y,width,height}) => ({id,x,y,width,height})), zoom, pan: {...pan}, ...(runReference ? {run: runReference} : {}) };
 			const node = await saveCanvas(name.trim(), target, layout, token, draftKey);
 			libraryVersion++;
 			saved = [node, ...saved.filter(c => c.id !== node.id)];
@@ -126,7 +128,8 @@
 		try {
 			if (id) {
 				const result = await openCanvas(id, namespace, token);
-				if (!opened) overview = { cards, zoom, pan };
+				if (!opened) overview = { cards, zoom, pan, runReference };
+				runReference = result.layout.run;
 				cards = result.cards.map(({ record, position }) => ({...cardFrom(record, 0, 1), ...position}));
 				selectedCanvas = { id: result.node.id, title: result.node.title, namespace: result.node.namespace };
 				pan = result.layout.pan;
@@ -134,7 +137,7 @@
 				const missing = result.layout.cards.length - cards.length;
 				if (missing) message = missing === 1 ? '1 saved card is no longer available.' : missing + ' saved cards are no longer available.';
 			} else if (overview) {
-				({cards, zoom, pan} = overview);
+				({cards, zoom, pan, runReference} = overview);
 				selectedCanvas = null;
 				overview = null;
 			}
@@ -403,6 +406,9 @@
 		</form>
 		{#if libraryError}<span role="alert">{libraryError} <button on:click={refreshLibrary} class="underline">Retry</button></span>{/if}
 	</div>
+	{#if !loading}
+		{#key opened}<CanvasRunReview {token} disabled={busy} bind:reference={runReference} />{/key}
+	{/if}
 	{#if message}<p role="status">{message}</p>{/if}
 
 	{#if loading}

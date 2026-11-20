@@ -12,6 +12,7 @@
 		X
 	} from '@lucide/svelte';
 	import { agentRunObservations } from '$lib/api/agent';
+	import RunGateEvidence from '$lib/components/RunGateEvidence.svelte';
 	import Button from '$lib/components/Button.svelte';
 	import EmptyState from '$lib/components/EmptyState.svelte';
 	import { pushToast } from '$lib/stores/toast';
@@ -296,17 +297,6 @@
 				return 'bg-red-500/20 text-red-300';
 			default:
 				return 'bg-slate-500/20 text-slate-300';
-		}
-	}
-
-	function gateBadge(outcome: string): string {
-		switch (outcome) {
-			case 'pass':
-				return 'bg-emerald-500/20 text-[rgb(var(--mv-text))]';
-			case 'fail':
-				return 'bg-red-500/20 text-[rgb(var(--mv-text))]';
-			default:
-				return 'bg-amber-500/20 text-[rgb(var(--mv-text))]';
 		}
 	}
 
@@ -731,40 +721,7 @@
 											<ul class="mt-2 space-y-1">
 												{#each gatesByRun[run.run_id] as gate (gate.gate + gate.evaluated_at)}
 													<li>
-														<details
-															class="rounded-md border border-[rgb(var(--mv-border))] p-2 text-xs"
-														>
-															<summary
-																class="cursor-pointer text-[rgb(var(--mv-text))] focus-visible:outline focus-visible:outline-2"
-															>
-																<span class="font-medium"
-																	>{GATE_LABELS[gate.gate] ?? gate.gate}</span
-																>
-																<span
-																	class={`ml-1 rounded px-1.5 py-0.5 ${gateBadge(gate.outcome)}`}
-																	>{gate.outcome === 'pass'
-																		? 'Passed'
-																		: gate.outcome === 'fail'
-																			? 'Failed'
-																			: readableStatus(gate.outcome)}</span
-																>
-															</summary>
-															{#if gate.detail}<p class="mt-2">{gate.detail}</p>{/if}
-															<dl class="mt-2 grid gap-1 break-words">
-																<dt>Check</dt>
-																<dd>{gate.gate.toUpperCase()}</dd>
-																<dt>Evaluator</dt>
-																<dd class="break-all">{gate.evaluator_actor}</dd>
-																<dt>Evaluated</dt>
-																<dd>
-																	<time datetime={gate.evaluated_at}
-																		>{formatWhen(gate.evaluated_at)}</time
-																	>
-																</dd>
-																<dt>Evidence digest</dt>
-																<dd class="break-all font-mono">{gate.evidence_digest}</dd>
-															</dl>
-														</details>
+														<RunGateEvidence {gate} />
 													</li>
 												{/each}
 											</ul>

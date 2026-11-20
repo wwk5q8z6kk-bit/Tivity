@@ -10,6 +10,8 @@ Choose **Attach excerpt** to include the first 1,000 characters of the open docu
 
 In **Canvas**, arrange the cards, choose the ones you want to keep, enter a name, and select **Save a copy**. The vault saves card references, size, position, pan, and zoom in the chosen namespace. Another client with access can reopen the layout from **Open canvas** or follow its **Copy canvas link** URL on the same web deployment. The desktop app offers **Copy canvas name** for finding the layout on another device. Card titles and content come from the current vault records when opened. Use **Save a copy** again to keep a revised arrangement. To discuss it, open the saved canvas and select **Ask about canvas** in the assistant. Each question reads its current cards from the vault and returns numbered sources. Follow-up questions stay on that canvas until you remove it.
 
+To hand a result to a reviewer, open **Canvas → Link a work-order run**, select the work order and attempt, then **Link run**. **Save a copy** stores the two identifiers with the canvas. A teammate can open that canvas and choose **Review linked run** to inspect the checks and artifact digests. **Check artifact bytes** downloads the selected artifact and compares its SHA-256 digest locally. **Close run review** returns to the canvas with the composer draft intact. Each reader needs their own authorized vault identity. Namespace-only credentials cannot read work orders.
+
 ## Run the combined web app
 
 Use Node 24 and pnpm 10. From the repository root run:

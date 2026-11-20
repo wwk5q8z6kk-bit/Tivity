@@ -1,4 +1,4 @@
-import { API_BASE_URL, fetchJson } from './client';
+import { API_BASE_URL, bearerHeaders, fetchJson } from './client';
 
 export type WorkOrderStatus =
 	| 'draft'
@@ -162,16 +162,21 @@ export interface RestoreSummary {
 
 const BASE = '/api/v1/work-orders';
 
-export function listWorkOrders(status?: WorkOrderStatus): Promise<WorkOrderSummary[]> {
+function readOrderData<T>(path: string, token: string): Promise<T> {
+	return token ? fetchJson<T>(path, { headers: bearerHeaders(token) }) : fetchJson<T>(path);
+}
+
+export function listWorkOrders(status?: WorkOrderStatus, token = ''): Promise<WorkOrderSummary[]> {
 	const params = new URLSearchParams();
 	if (status) params.set('status', status);
 	const query = params.toString();
-	return fetchJson<WorkOrderSummary[]>(`${BASE}${query ? `?${query}` : ''}`);
+	return readOrderData<WorkOrderSummary[]>(`${BASE}${query ? `?${query}` : ''}`, token);
 }
 
-export async function getWorkOrder(workOrderId: string): Promise<WorkOrderSummary> {
-	const detail = await fetchJson<{ work_order: WorkOrderSummary }>(
-		`${BASE}/${encodeURIComponent(workOrderId)}`
+export async function getWorkOrder(workOrderId: string, token = ''): Promise<WorkOrderSummary> {
+	const detail = await readOrderData<{ work_order: WorkOrderSummary }>(
+		`${BASE}/${encodeURIComponent(workOrderId)}`,
+		token
 	);
 	return detail.work_order;
 }
@@ -204,8 +209,8 @@ export function startRun(
 	);
 }
 
-export function listRuns(workOrderId: string): Promise<AgentRunView[]> {
-	return fetchJson<AgentRunView[]>(`${BASE}/${encodeURIComponent(workOrderId)}/runs`);
+export function listRuns(workOrderId: string, token = ''): Promise<AgentRunView[]> {
+	return readOrderData<AgentRunView[]>(`${BASE}/${encodeURIComponent(workOrderId)}/runs`, token);
 }
 
 export function getRunReadiness(workOrderId: string, runId: string): Promise<RunReadinessView> {
@@ -214,9 +219,14 @@ export function getRunReadiness(workOrderId: string, runId: string): Promise<Run
 	);
 }
 
-export function listGates(workOrderId: string, runId: string): Promise<GateResultView[]> {
-	return fetchJson<GateResultView[]>(
-		`${BASE}/${encodeURIComponent(workOrderId)}/runs/${encodeURIComponent(runId)}/gates`
+export function listGates(
+	workOrderId: string,
+	runId: string,
+	token = ''
+): Promise<GateResultView[]> {
+	return readOrderData<GateResultView[]>(
+		`${BASE}/${encodeURIComponent(workOrderId)}/runs/${encodeURIComponent(runId)}/gates`,
+		token
 	);
 }
 
@@ -285,8 +295,11 @@ export function recordArtifact(
 	);
 }
 
-export function listArtifacts(workOrderId: string): Promise<ArtifactView[]> {
-	return fetchJson<ArtifactView[]>(`${BASE}/${encodeURIComponent(workOrderId)}/artifacts`);
+export function listArtifacts(workOrderId: string, token = ''): Promise<ArtifactView[]> {
+	return readOrderData<ArtifactView[]>(
+		`${BASE}/${encodeURIComponent(workOrderId)}/artifacts`,
+		token
+	);
 }
 
 /**
@@ -299,6 +312,20 @@ export function artifactContentUrl(workOrderId: string, artifactId: string): str
 	return `${API_BASE_URL}${BASE}/${encodeURIComponent(workOrderId)}/artifacts/${encodeURIComponent(
 		artifactId
 	)}/content`;
+}
+
+export async function verifyArtifact(orderId: string, artifact: ArtifactView, token: string) {
+	const response = await fetch(artifactContentUrl(orderId, artifact.artifact_id), {
+		headers: bearerHeaders(token),
+		cache: 'no-store',
+		redirect: 'error'
+	});
+	if (!response.ok) throw new Error('Artifact unavailable');
+	const digest = await crypto.subtle.digest('SHA-256', await response.arrayBuffer());
+	const hex = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join(
+		''
+	);
+	return hex === artifact.content_digest;
 }
 
 export function exportWorkOrder(workOrderId: string): Promise<unknown> {

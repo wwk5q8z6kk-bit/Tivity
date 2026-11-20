@@ -11,7 +11,13 @@ export interface CardPosition {
 	height: number;
 }
 
+export interface RunReference {
+	orderId: string;
+	runId: string;
+}
+
 export interface CanvasLayout {
+	run?: RunReference;
 	cards: CardPosition[];
 	pan: { x: number; y: number };
 	zoom: number;
@@ -61,6 +67,10 @@ function validLayout(value: unknown): value is CanvasLayout {
 	if (!value || typeof value !== 'object') return false;
 	const layout = value as CanvasLayout;
 	return (
+		(layout.run === undefined ||
+			(layout.run &&
+				nodeIdPattern.test(layout.run.orderId) &&
+				nodeIdPattern.test(layout.run.runId))) &&
 		Array.isArray(layout.cards) &&
 		layout.cards.length <= 50 &&
 		new Set(layout.cards.map((card) => card?.id)).size === layout.cards.length &&
