@@ -18,7 +18,9 @@ use std::str::FromStr;
 use uuid::Uuid;
 
 use super::interoperability::interoperability_string_enum;
-use super::{ProvenanceReference, RetentionClass, SchemaReference, Sensitivity, StableUri};
+use super::{
+    IdempotencyKey, ProvenanceReference, RetentionClass, SchemaReference, Sensitivity, StableUri,
+};
 
 /// Maximum write-lease duration, matching the outbox dispatch bound in
 /// `ACTION_RECEIPT_MODEL.md`. A longer lease would let a crashed run hold a
@@ -709,11 +711,61 @@ pub struct WorkOrderAdmissionReceipt {
 
 /// Evidence from a single database read transaction. Storage returns gates and
 /// artifacts in stable order so independent readers can compare revisions.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct RunEvidenceSnapshot {
     pub run: AgentRun,
     pub gates: Vec<GateResult>,
     pub artifacts: Vec<RunArtifact>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RunTransitionReceipt {
+    pub event_id: Uuid,
+    pub from_status: Option<AgentRunStatus>,
+    pub to_status: AgentRunStatus,
+    pub principal: StableUri,
+    pub actor: StableUri,
+    pub correlation_id: Uuid,
+    pub causation_id: Option<Uuid>,
+    pub evidence_revision: String,
+    pub occurred_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RunReviewDecision {
+    Accept,
+    Return,
+}
+
+#[derive(Debug)]
+pub struct RunReviewSubmission {
+    pub expected_revision: String,
+    pub decision: RunReviewDecision,
+    pub reason: String,
+    pub idempotency_key: IdempotencyKey,
+}
+
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RunReviewReceipt {
+    pub receipt_id: Uuid,
+    pub order_id: Uuid,
+    pub run_id: Uuid,
+    pub space_id: Uuid,
+    pub evidence_revision: String,
+    pub reviewer: StableUri,
+    pub decision: RunReviewDecision,
+    pub reason: String,
+    pub decided_at: DateTime<Utc>,
+}
+
+#[derive(Debug)]
+pub struct RunEvidenceHistory {
+    pub snapshot: RunEvidenceSnapshot,
+    pub current_revision: String,
+    pub evidence_revisions: Vec<String>,
+    pub run_transition_receipts: Vec<RunTransitionReceipt>,
+    pub review_decisions: Vec<RunReviewReceipt>,
 }
 
 impl RunEvidenceSnapshot {

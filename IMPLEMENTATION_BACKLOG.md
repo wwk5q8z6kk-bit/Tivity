@@ -1662,7 +1662,7 @@ document, but each one either hides real defects or makes verification lie.
 #### REVIEW-003 — Record a reviewer decision against an evidence revision
 
 - **priority:** P1 — release gate for in-app human acceptance
-- **status:** blocked
+- **status:** in_progress
 - **mandate:** `docs/MINDVAULT_NEXT_MASTER_PLAN.md:122` — “reviewer and reason in a decision receipt”
 - **governing_authority:** ADR 010 action envelope and trust ledger, ADR 012 artifacts and gates
 - **blocked_by:** IK-020, SPACE-005, REVIEW-002 (inferred)
@@ -1672,8 +1672,8 @@ document, but each one either hides real defects or makes verification lie.
   2. On Accept or Return, derive the reviewer from the authenticated principal, enforce current Space authority and independent review, and compare the expected evidence revision inside the write transaction. Return a conflict with no decision if evidence changed.
   3. Commit the reason, outcome, evidence revision and Trust Ledger receipt together. Replaying the same submission must return the original receipt. Reject a reused key with a different payload.
   4. Show the recorded decision on the canvas after an authorized fresh read. Preserve earlier decisions as history when later evidence requires review.
-- **acceptance:** Proposed `cargo test -p mv-server --test reviewer_decision -- --test-threads=1`. Accept or return with a reason, retry the same decision, restart and reopen from another client. Require one receipt, attributable reviewer and original evidence revision. Changed evidence requires re-review. A revoked reviewer cannot reopen restricted content or submit a decision.
-- **snapshot coverage:** `wedge_value_proof_trusted_work_completes_over_http` covers revision changes on execution, exact content after restart, and denied access after revocation. `frontend/e2e/reviewer-handoff.spec.ts` exercises finding a linked review from the shared task discussion. Decision receipts remain blocked on the dependencies above.
+- **acceptance:** `cargo test -p mv-server --test work_order_conformance -- --test-threads=1` and `pnpm --dir frontend exec playwright test reviewer-handoff.spec.ts`. Accept or return with a reason, retry the same decision and verify it through a fresh read of the on-disk ledger. Require one receipt per revision, attributable reviewer and the original evidence revision. Changed evidence requires re-review. A revoked reviewer cannot reopen restricted content or submit a decision.
+- **local runtime scope:** Migration 046 adds append-only evidence snapshots plus lifecycle and review receipts. The HTTP conformance test covers lifecycle receipts and outbox atomicity is covered by `run_trust_ledger_is_atomic_and_append_only` in storage. The canvas reopens historical evidence without applying its decision to the current revision. This slice does not close IK-020 (generalized action and policy envelope) or SPACE-005 (broader Space ledger and verification).
 
 #### REVIEW-004 — Test displacement of one recurring release review
 

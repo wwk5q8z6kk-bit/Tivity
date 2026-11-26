@@ -771,7 +771,7 @@ impl MindVaultEngine {
                 "a run cannot approve itself (SPACE-002 / ADR 012)".into(),
             ));
         }
-        self.transition_run(run_id, AgentRunStatus::Ready, None)
+        self.transition_run_as(run_id, AgentRunStatus::Ready, None, Some(approver))
             .await
     }
 
@@ -1154,13 +1154,28 @@ impl MindVaultEngine {
         status: AgentRunStatus,
         failure_class: Option<RunFailureClass>,
     ) -> MvResult<AgentRun> {
+        self.transition_run_as(run_id, status, failure_class, None)
+            .await
+    }
+
+    async fn transition_run_as(
+        &self,
+        run_id: Uuid,
+        status: AgentRunStatus,
+        failure_class: Option<RunFailureClass>,
+        actor: Option<&StableUri>,
+    ) -> MvResult<AgentRun> {
         let current = self
             .store
             .nodes
             .get_agent_run(run_id)
             .await?
             .ok_or_else(|| MvError::NotFound("agent run not found".into()))?;
-        let from = current.status;
+        if current.status == status
+            && failure_class.or(current.failure_class) == current.failure_class
+        {
+            return Ok(current);
+        }
         let now = Utc::now();
 
         let mut next = current.clone();
@@ -1175,7 +1190,7 @@ impl MindVaultEngine {
         }
 
         let local_node_id = self.store.nodes.local_context_node_id().await?;
-        let event = Self::agent_run_transition_event(local_node_id, &next, from)?;
+        let event = Self::agent_run_transition_event(local_node_id, &next, &current, actor)?;
         let commit = self
             .store
             .nodes
@@ -1241,11 +1256,13 @@ impl MindVaultEngine {
     fn agent_run_transition_event(
         local_node_id: Uuid,
         run: &AgentRun,
-        from: AgentRunStatus,
+        previous: &AgentRun,
+        actor: Option<&StableUri>,
     ) -> MvResult<EventEnvelope> {
         let data = serde_json::json!({
             "run_id": run.run_id,
-            "from_status": from.as_str(),
+            "from_status": previous.status.as_str(),
+            "from_updated_at": previous.updated_at.to_rfc3339(),
             "to_status": run.status.as_str(),
             "record_digest": canonical_json_sha256(&serde_json::json!({
                 "run_id": run.run_id,
@@ -1253,11 +1270,16 @@ impl MindVaultEngine {
                 "status": run.status.as_str(),
             })),
         });
+        // Status alone is not a version: a run can cycle Ready -> Leased -> Ready.
         let key = format!(
-            "run-{}-{}-{}",
-            run.run_id,
-            run.attempt_no,
-            run.status.as_str()
+            "run-{}",
+            canonical_json_sha256(&serde_json::json!({
+                "run_id": run.run_id,
+                "from_status": previous.status,
+                "from_updated_at": previous.updated_at,
+                "to_status": run.status,
+                "failure_class": run.failure_class,
+            }))
         );
         EventEnvelope::new(NewEventEnvelope {
             event_type: AGENT_RUN_LIFECYCLE_TRANSITIONED_V1.into(),
@@ -1270,7 +1292,7 @@ impl MindVaultEngine {
             )
             .map_err(MvError::InvalidInput)?,
             principal: run.principal.clone(),
-            actor: run.principal.clone(),
+            actor: actor.unwrap_or(&run.actor).clone(),
             correlation_id: run.correlation_id,
             causation_id: run.causation_id,
             idempotency_key: IdempotencyKey::parse(&key).map_err(MvError::InvalidInput)?,
@@ -1530,7 +1552,7 @@ mod tests {
             schema: SchemaReference::new(StableUri::schema("agent-run-started").unwrap(), "1.0.0")
                 .unwrap(),
             principal: run.principal.clone(),
-            actor: run.principal.clone(),
+            actor: run.actor.clone(),
             correlation_id: run.correlation_id,
             causation_id: None,
             idempotency_key: IdempotencyKey::parse(format!("start-{key}")).unwrap(),
@@ -2379,7 +2401,7 @@ mod tests {
             schema: SchemaReference::new(StableUri::schema("agent-run-started").unwrap(), "1.0.0")
                 .unwrap(),
             principal: run.principal.clone(),
-            actor: run.principal.clone(),
+            actor: run.actor.clone(),
             correlation_id: run.correlation_id,
             causation_id: None,
             idempotency_key: IdempotencyKey::parse("start-gated-run").unwrap(),

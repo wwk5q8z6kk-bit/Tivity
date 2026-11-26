@@ -1129,6 +1129,19 @@ pub trait InteroperabilityStore: Send + Sync {
         order_id: Uuid,
         run_id: Uuid,
     ) -> MvResult<Option<RunEvidenceSnapshot>>;
+    async fn run_evidence_history(
+        &self,
+        order_id: Uuid,
+        run_id: Uuid,
+        revision: Option<&str>,
+    ) -> MvResult<Option<RunEvidenceHistory>>;
+    async fn review_run_evidence(
+        &self,
+        order_id: Uuid,
+        run_id: Uuid,
+        reviewer: &StableUri,
+        submission: &RunReviewSubmission,
+    ) -> MvResult<RunReviewReceipt>;
     async fn get_agent_run(&self, run_id: Uuid) -> MvResult<Option<AgentRun>>;
 
     async fn list_agent_runs(&self, work_order_id: Uuid, limit: usize) -> MvResult<Vec<AgentRun>>;

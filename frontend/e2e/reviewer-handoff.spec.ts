@@ -27,6 +27,9 @@ test('carries a specific run on a canvas and rechecks access for each reader', a
 	let revoked = false;
 	let checkOutcome = 'pass';
 	let artifactBytes = bytes;
+	const original = 'server-v1:' + 'a'.repeat(64);
+	const changed = 'server-v1:' + 'b'.repeat(64);
+	const decisions: Record<string, unknown>[] = [];
 	await page.route('**/api/v1/**', async (route) => {
 		const path = new URL(route.request().url()).pathname;
 		const token = route.request().headers().authorization;
@@ -37,11 +40,33 @@ test('carries a specific run on a canvas and rechecks access for each reader', a
 			if (path.endsWith(orderId)) return route.fulfill({ json: { work_order: order } });
 			if (path.endsWith('/runs'))
 				return route.fulfill({ json: [{ run_id: runId, attempt_no: 2, status: 'completed' }] });
+			if (path.endsWith('/review')) {
+				const submission = route.request().postDataJSON();
+				expect(submission.expected_revision).toBe(
+					submission.decision === 'accept' ? original : changed
+				);
+				expect(submission.idempotency_key).toBeTruthy();
+				const receipt = {
+					receipt_id: 'decision-' + (decisions.length + 1),
+					reviewer: 'Independent reviewer',
+					decided_at: '2026-11-19T13:00:00Z',
+					evidence_revision: submission.expected_revision,
+					decision: submission.decision,
+					reason: submission.reason
+				};
+				decisions.push(receipt);
+				return route.fulfill({ json: receipt });
+			}
 			if (path.endsWith('/evidence')) {
 				expect(path).toContain('/runs/' + runId + '/');
+				const current = checkOutcome === 'pass' ? original : changed;
+				const requested = new URL(route.request().url()).searchParams.get('revision') ?? current;
 				return route.fulfill({
 					json: {
-						revision: 'server-v1:' + (checkOutcome === 'pass' ? 'a' : 'b').repeat(64),
+						revision: requested,
+						current_revision: current,
+						evidence_revisions: current === original ? [original] : [original, changed],
+						review_decisions: decisions,
 						admission_receipt: {
 							event_id: 'admission-1',
 							principal: 'Release lead',
@@ -53,7 +78,7 @@ test('carries a specific run on a canvas and rechecks access for each reader', a
 						gates: [
 							{
 								gate: 'g2',
-								outcome: checkOutcome,
+								outcome: requested === original ? 'pass' : 'fail',
 								evaluator_actor: 'Release reviewer',
 								evidence_digest: digest,
 								evaluated_at: '2026-11-19T12:00:00Z'
@@ -120,6 +145,10 @@ test('carries a specific run on a canvas and rechecks access for each reader', a
 	await expect(page.getByText('Other attempt')).toHaveCount(0);
 	await page.getByRole('button', { name: 'Check artifact bytes' }).click();
 	await expect(page.getByText('Digest matches')).toBeVisible();
+	await page.getByLabel('Decision reason').fill('Verified the release evidence');
+	await page.getByRole('button', { name: 'Accept exact revision' }).click();
+	await expect(page.getByText('Accepted this evidence revision')).toBeVisible();
+	await expect(page.getByText('Verified the release evidence', { exact: true })).toBeVisible();
 	artifactBytes = 'changed content';
 	await page.getByRole('button', { name: 'Check artifact bytes' }).click();
 	await expect(page.getByText('Digest mismatch')).toBeVisible();
@@ -137,6 +166,18 @@ test('carries a specific run on a canvas and rechecks access for each reader', a
 	await expect(page.getByText('Verify release readiness', { exact: true })).toBeVisible();
 	await expect(page.getByText(/Run evidence has changed since it was pinned/)).toBeVisible();
 	await expect(page.getByText('Failed', { exact: true })).toBeVisible();
+	await expect(page.getByText('Accepted this evidence revision')).toHaveCount(0);
+	await page.getByText('Earlier review decisions', { exact: true }).click();
+	await expect(page.getByText('Verified the release evidence', { exact: true })).toBeVisible();
+	await page.getByRole('button', { name: 'Open pinned revision' }).click();
+	await expect(page.getByText('Accepted this historical revision')).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Return exact revision' })).toHaveCount(0);
+	await page.getByRole('button', { name: 'Back to current evidence' }).click();
+	await page.getByRole('button', { name: 'Use current evidence for a new copy' }).click();
+	await expect(page.getByRole('button', { name: 'Accept exact revision' })).toHaveCount(0);
+	await page.getByLabel('Decision reason').fill('Investigate the failed check');
+	await page.getByRole('button', { name: 'Return exact revision' }).click();
+	await expect(page.getByText('Returned this evidence revision')).toBeVisible();
 	await page.getByRole('button', { name: 'Disconnect vault token' }).click();
 	await expect(page.getByText('Verify release readiness', { exact: true })).toHaveCount(0);
 	await page.getByRole('button', { name: 'Review linked run' }).click();
