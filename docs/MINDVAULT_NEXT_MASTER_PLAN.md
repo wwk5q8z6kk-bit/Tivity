@@ -1,7 +1,7 @@
 # MindVault Next — Master Product, Architecture, Interoperability, Collaboration, Agent, Security, and Execution Plan
 
 - **Status:** Superseding master plan (research-expanded)
-- **Date:** 2026-07-26 · **Revised:** 2026-11-19
+- **Date:** 2026-07-26 · **Revised:** 2026-11-26
 - **User-facing product:** Tivity (MindVault foundation)
 - **Internal architecture name:** Sovereign Context Fabric
 - **Owner:** Hassan El Jesr
@@ -19,6 +19,48 @@ This document supersedes [`DEVELOPMENT_PLAN.md`](../DEVELOPMENT_PLAN.md) for pro
 3. **Execution status** is never inferred from prose here. Status lives only in [`IMPLEMENTATION_BACKLOG.md`](../IMPLEMENTATION_BACKLOG.md) (`verified` requires evidence).
 4. Evidence-first: distinguish verified implementation from claims; filenames and “code present” are not completion.
 5. Sections **102–145** (research expansion) are binding where earlier examples appear narrower. Examples are conformance floors, never scope ceilings.
+
+## Universal Agentic Work Platform — Tivity adoption
+
+Tivity is one local-first workspace for capturing and finding context, scoping a delegation, reviewing its output, and deciding what becomes durable knowledge. It should serve personal work and collaborative projects across research, engineering, writing, design, analytics and operations. Meetings, conversations, notes, documents, files, and issues are inputs. Release review is the first market test, not a requirement that every workflow look like software delivery.
+
+### Product and system boundaries
+
+| Boundary | Responsibility | What does not cross implicitly |
+|---|---|---|
+| Tivity desktop and web workspace | Help people collect evidence, resume work, delegate, inspect results, and make decisions. Boards, canvases, search and the inbox are views into governed records. | A UI reference or filter never grants access, approves a write, or proves that an action happened. |
+| MindVault / Sovereign Context Fabric | Own private and shared context, policy, Work Orders, Agent Runs, evidence, events, and receipts. Enforce authorization on the command and query path. | No extension, remote executor, or adapter receives direct canonical storage access. |
+| DevX and other executors | Provide replaceable specialist capabilities. DevX owns engineering execution. Tivity owns the Work Order, what was disclosed or allowed, and acceptance of the evidence. | No shared database, blanket vault access, implicit write-back, or trust in a runtime's self-reported success. Start with read-only evidence import; dispatch remains gated. |
+| GitHub and other connected systems | Stay authoritative for their own issues, pull requests, and provider state. Tivity stores scoped references or approved projections with source IDs and revisions. | No bidirectional last-writer-wins, automatic overwrite, or promotion of fetched content to canonical knowledge. Outbound changes are separate governed effects. |
+
+Keep the existing Rust authority kernel and SvelteKit/Tauri workspace. Use TypeScript for UI and adapter code where it fits, Python for evaluation or specialist runners, and native macOS code when platform APIs warrant it. An out-of-process component must use a versioned, policy-enforcing interface; language choice never changes its grants. Add a new service, queue or scheduler only when an observed workload cannot meet its reliability or operational targets on the existing engine.
+
+### The reusable work contract
+
+1. **Capture and organize.** Save a thought, source reference or follow-up without requiring a project. Use a project when an objective needs owners, workstreams or dependencies. A private item stays private unless the owner explicitly chooses content, audience and destination. Imported text, screen excerpts and transcripts are untrusted inputs, not authority to run tools.
+2. **Delegate.** A task expresses intent; an admitted Work Order authorizes a bounded action. Specify objective, input references with source authority and freshness, separate Context and Tool Grants, allowed effects, budgets, acceptance criteria and reviewer requirements before execution. Active grants are rechecked at action time. Policy or an authorized human, not a model, admits or expands the scope.
+3. **Execute and recover.** Each Agent Run is an attributable attempt, not the task itself. Journal meaningful transitions and checkpoint recoverable work. Retries link to the original order, use stable keys for the same effect, preserve prior evidence, and do not duplicate publication. Start with explicit dependencies and bounded retries; add loops, parallel dispatch and distributed execution only behind demonstrated coordination, isolation, revocation and budget guarantees.
+4. **Verify and decide.** Evidence identifies artifact version and digest, source revisions, the evaluator and check result. An independent evaluator or human checks each consequential acceptance criterion. A successful process exit, model assessment or executor-supplied status is not acceptance. The reviewer’s accept/return decision binds to the evidence revision; record it atomically with the receipt, reject stale revisions, and recheck access on reopen.
+5. **Deliver and learn.** Publish or share only the authorized artifact version and audience. Keep the effect receipt and source lineage. Promote a useful finding or decision explicitly; don't turn messages, logs or transient capture into permanent knowledge by default. Export preserves identities, relationships, materialization decisions and receipts within the applicable grants.
+
+Specialized schemas, checklists, routines and tools belong in versioned Domain Packs. A research brief and a release review should use the same admission, evidence, evaluation, and review contracts. One workflow may require source checking and the other a reproducible test; neither warrants its own authority model.
+
+### First proof portfolio and release gates
+
+| Proof | User outcome | Exit evidence |
+|---|---|---|
+| Trust foundation — IK-020, SPACE-005, REVIEW-003 | A reviewer accepts or returns the exact output they inspected. | Exercise actual writes on the server path: one receipt on replay, no decision on stale revision, restart and reopen from a second client, deny unrelated and revoked reviewers, and no duplicate effect after interrupted delivery. Test evidence and budget enforcement, not just response shape. |
+| Team release handoff — REVIEW-004 | A team can decide whether to ship without reconstructing the evidence across tools. | Observe its baseline and two comparable review cycles. Record handoff-to-decision time, help requests, corrections, and whether the next consequential decision happens in Tivity. Reconcile the sampled source records without writing back to the tracker. |
+| Cited research brief — cross-domain conformance | An owner resumes an investigation from permitted notes and documents and hands a sourced brief to a reviewer. | One flow produces a versioned brief whose claims open the correct source revisions. Include an unsupported claim, changed evidence, a private source and an unavailable source: return the unsupported claim, require re-review on changed evidence, disclose no private text, and make missing evidence visible. Demonstrate the local path with public or synthetic fixtures and model/context egress disabled. Reuse the same Work Order and reviewer path. |
+| DevX evidence reader — integration proof, not dispatch | A release lead can inspect evidence about a DevX result without giving DevX access to the vault. | An owner-approved versioned manifest references the run, artifact digest, evaluator and evidence identity; deduplicate replay and record validation failures. Import remains unverified until checks or a qualified reviewer accept it. Do not enable live dispatch until AGENT-004 and grant, egress, revocation and budget conformance pass. |
+
+The [execution backlog](../IMPLEMENTATION_BACKLOG.md) owns statuses. Close foundation and reviewer gates before shipping broad new verticals. Capture and device presence can then expand where a pilot shows a meaningful recall or handoff failure: begin with explicit capture, approved sources, and an offline briefing that cites what changed. An optional on-device capture helper must have visible state, scoped opt-in, exclusion and pause controls, deletion that reaches derivatives and indexes, and zero capture egress by default. No covert recording, stealth interview copilot, wholesale replication, or cloud dependency for owning and recovering a personal vault.
+
+Measure accepted artifacts and repeat team use separately from run completions. A saved decision without a retrievable rationale, a repeated failure after retry, or work that returns to the old system for acceptance is a reason to improve the handoff before adding breadth.
+
+### Dependency policy and distribution
+
+Adopt permissive-licensed dependencies as the default admission policy for shipped core components. Evaluate separately: first-party source, shipped transitive libraries and bundled tools, development-only tooling, optional adapters and services, and model/weight distribution terms. Fail release verification on unknown or disallowed shipped-core terms until resolved; a reviewed exception needs a named owner, scope, expiry and remediation plan. An approved external integration does not become a permissible bundled dependency by being optional. Pin versions, generate a per-release dependency inventory/SBOM with notices, and record evidence for overrides. Refresh and reconcile the historical [dependency and license audit](../DEPENDENCY_AND_LICENSE_AUDIT.md) against the current build before claiming compliance. This policy neither changes the [repository license](../LICENSE) nor authorizes relicensing, historical rewrites or dependency replacement on the basis of an old inventory.
 
 ## Tivity command center — product direction and delivery sequence
 
@@ -62,7 +104,7 @@ On 2026-11-19 a fresh local vault ran `mv trusted-work demo` and returned a comp
 | 2. Complete the trust foundation | Close the relevant identity, grant, action-envelope, reliable-effect and communication-promotion gaps. Reconcile existing admission receipts with the durable Trust Ledger. Cover transitions as well as initial admission. | Exercise revocation before an action, crash after an admitted write, retry after an uncertain response and explicit promotion of a discussion excerpt. Verify one attributable effect and one durable outcome for each accepted operation. |
 | 3. Put the handoff in the command center | From a release canvas, choose evidence, propose a bounded Work Order, review scope, execute and present the result. Record the reviewer’s acceptance or reason for returning it. Keep draft state and private inputs scoped to their owner. | Two people complete the Friday release scenario on separate clients. The reviewer traces a claim to the evidence revision used, can inspect later changes, and sees the same recorded decision after reconnecting. |
 | 4. Replace a team's recurring delivery workflow | Pilot one real project alongside its current tracker. Map its statuses, owners, documents, source IDs and dependencies. Reconcile imports and expose conflicts. Add the board, update and discussion behaviors the pilot actually depends on. | The team runs its regular review in Tivity, reconciles a sample against the original tracker, exports its records and can recover from an interrupted migration. Measure repeat use and decision time against its own baseline. |
-| 5. Expand to a personal and team command center | Reuse the same objects and authority model for a second workflow, such as turning a meeting decision into an assigned task and a scheduled report. Add integrations and domain packs as repeated needs emerge. External execution depends on runtime isolation. | A second workflow uses the existing grants, review and receipts. The same person can move between private work and shared work with a visible audience and verify exactly what was shared. |
+| 5. Expand to a personal and team command center | Start with the cited research brief as the second proof. Reuse the same objects for notes and files, project updates, writing, scheduled reports, and meeting follow-ups. Add integrations and domain packs as repeated needs emerge. External execution depends on runtime isolation. | A second workflow uses the existing grants, review and receipts. The same person can move between private work and shared work with a visible audience and verify exactly what was shared. |
 
 The critical path runs through identity, stable references and durable outcomes. Research and partner observation can proceed while foundation work lands. Schedule a pilot once the two-client handoff passes. Use measured integration effort and the team's real review cadence to forecast migration. The execution backlog owns item status and dependencies, including IK-001 through IK-003, IK-020, SPACE-002 through SPACE-006 and AGENT-004. [Implementation backlog](../IMPLEMENTATION_BACKLOG.md)
 

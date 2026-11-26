@@ -1044,6 +1044,26 @@ ADR 011 §Implementation order step 7. `docs/adr/011-sovereign-interoperability-
 - **acceptance:** each of the eight is a named assertion — no vendor-specific type in the core; duplicate delivery creates no duplicate canonical action; every result retains source authority and provenance; candidate knowledge requires explicit or policy-approved promotion; two independent MCP hosts retrieve only granted context; two independent A2A-adapted agents execute bounded work; external delivery uses an outbox and complete action receipt; export/restore and connector uninstall preserve canonical integrity
 - **evidence:** —
 
+#### SLICE-004 — Local cited research brief through the standard review path
+- **priority:** P1 — cross-domain conformance gate for the wider product rollout
+- **status:** not_started
+- **mandate:** `docs/MINDVAULT_NEXT_MASTER_PLAN.md:54` — “a versioned brief whose claims open the correct source revisions”
+- **governing_authority:** Constitution laws 6–8 and 11–12; ADR 012 run evidence and review gates
+- **blocked_by:** REVIEW-003 (declared for end-to-end acceptance; fixture preparation can start earlier)
+- **files:** `crates/mv-server/tests/`, `frontend/e2e/`, `docs/strategy/unicorn/WEDGE_VALUE_PROOF_RESULTS.md`
+- **acceptance:** Add a named conformance test that admits one scoped Work Order over a synthetic local corpus, produces a versioned brief, and accepts or returns it via the same reviewer action used in the release proof. Validate available source revisions, withheld private content, a missing source, an unsupported claim, and a changed evidence revision, with network egress disabled.
+- **evidence:** —
+
+#### SLICE-005 — Read-only DevX evidence import conformance
+- **priority:** P1 — evidence gate for exposing DevX results in Tivity
+- **status:** not_started
+- **mandate:** `docs/MINDVAULT_NEXT_MASTER_PLAN.md:55` — “Import remains unverified until checks or a qualified reviewer accept it”
+- **governing_authority:** Constitution laws 1, 3, 6–9 and 14–15; ADR 012 run evidence
+- **blocked_by:** SPACE-005 (inferred for durable evidence), REVIEW-003 (inferred for in-app acceptance). AGENT-004 gates future dispatch, not local fixture import.
+- **files:** adapter contract and synthetic fixtures, `crates/mv-server/tests/`; no DevX repo change needed for the fixture
+- **acceptance:** Add an adapter conformance test for a user-approved local manifest: valid references preserve artifact digest, evaluator and source authority; replays are idempotent; missing evidence, an unsupported schema and altered digest cannot produce accepted evidence. Import never dispatches a run, grants access, trusts an upstream verification boolean or writes to DevX.
+- **evidence:** —
+
 ---
 
 # J. WS — knowledge workspace
@@ -1602,6 +1622,16 @@ document, but each one either hides real defects or makes verification lie.
 - **acceptance:** the documented command matches what CI actually runs
 - **evidence:** both prescribe a bare `cargo test --workspace`, the exact parallel configuration commits `37b39ef` and `5839238` patched CI to avoid. `verify_all.sh` also chains `scripts/smoke_test.sh`, which downloads an embedding model and needs network.
 
+#### HYG-007 — Reconcile the shipped-core dependency inventory and enforce admission
+- **priority:** P1 — release verification gate for the shipped-core dependency policy
+- **status:** not_started
+- **mandate:** `docs/MINDVAULT_NEXT_MASTER_PLAN.md:63` — “Fail release verification on unknown or disallowed shipped-core terms until resolved”
+- **governing_authority:** Tivity master plan, Universal Agentic Work Platform — Dependency policy and distribution
+- **blocked_by:** none
+- **files:** `DEPENDENCY_AND_LICENSE_AUDIT.md`, release verification and inventory tooling
+- **acceptance:** CI inventories dependencies from the exact build inputs and joins them to shipped artifacts and notices. Fixtures distinguish core, dev-only, optional integration and model artifacts; unknown or disallowed shipped-core entries and expired exceptions fail the gate. Regenerate the inventory and record each exception and its expiry without changing the repository license.
+- **evidence:** —
+
 ---
 
 ## Command-center reviewer journey
@@ -1610,7 +1640,7 @@ document, but each one either hides real defects or makes verification lie.
 
 - **priority:** P0 — first engineering increment of the reviewer handoff
 - **status:** verified
-- **mandate:** `docs/MINDVAULT_NEXT_MASTER_PLAN.md:73` — “the recorded evaluator, evaluation time and full evidence digest”
+- **mandate:** `docs/MINDVAULT_NEXT_MASTER_PLAN.md:115` — “the recorded evaluator, evaluation time and full evidence digest”
 - **governing_authority:** ADR 012, gate evidence and artifact review
 - **blocked_by:** none
 - **files:** `frontend/src/routes/work-orders/+page.svelte`, `frontend/src/lib/api/workOrders.ts`
@@ -1621,7 +1651,7 @@ document, but each one either hides real defects or makes verification lie.
 
 - **priority:** P0 — next read-only increment in the command-center plan
 - **status:** verified
-- **mandate:** `docs/MINDVAULT_NEXT_MASTER_PLAN.md:87` — “deliver a read-only handoff from the command center”
+- **mandate:** `docs/MINDVAULT_NEXT_MASTER_PLAN.md:129` — “deliver a read-only handoff from the command center”
 - **governing_authority:** ADR 010 Space membership, ADR 012 run evidence
 - **blocked_by:** REVIEW-001 (inferred)
 - **files:** `frontend/src/routes/workspace/`, `frontend/src/lib/api/workOrders.ts`, `frontend/e2e/`
@@ -1633,7 +1663,7 @@ document, but each one either hides real defects or makes verification lie.
 
 - **priority:** P1 — release gate for in-app human acceptance
 - **status:** blocked
-- **mandate:** `docs/MINDVAULT_NEXT_MASTER_PLAN.md:80` — “reviewer and reason in a decision receipt”
+- **mandate:** `docs/MINDVAULT_NEXT_MASTER_PLAN.md:122` — “reviewer and reason in a decision receipt”
 - **governing_authority:** ADR 010 action envelope and trust ledger, ADR 012 artifacts and gates
 - **blocked_by:** IK-020, SPACE-005, REVIEW-002 (inferred)
 - **files:** `crates/mv-engine/src/engine/`, `crates/mv-server/src/rest/work_orders.rs`, `frontend/src/routes/workspace/`
@@ -1649,7 +1679,7 @@ document, but each one either hides real defects or makes verification lie.
 
 - **priority:** P1 — evidence gate before broad workflow replacement
 - **status:** not_started
-- **mandate:** `docs/MINDVAULT_NEXT_MASTER_PLAN.md:89` — “two different reviewers” and “the following cycle”
+- **mandate:** `docs/MINDVAULT_NEXT_MASTER_PLAN.md:131` — “two different reviewers” and “the following cycle”
 - **governing_authority:** ratified Trusted Agent Work strategy, master plan milestone 4
 - **blocked_by:** none for baseline observation. The in-app comparison depends on REVIEW-003.
 - **files:** `docs/strategy/unicorn/WEDGE_VALUE_PROOF_RESULTS.md`, partner-owned migration sample and review notes
