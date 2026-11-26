@@ -289,6 +289,8 @@ use utoipa_swagger_ui::SwaggerUi;
         work_order_export,
         work_order_restore,
         work_order_run_readiness,
+        work_order_run_evidence,
+        work_order_run_review,
         work_order_run_gates,
         work_order_run_record_gate,
         work_order_run_approve,
@@ -1263,6 +1265,33 @@ async fn work_order_restore() {}
     responses((status = 200, description = "Unsatisfied inbound edges and outstanding gates"))
 )]
 async fn work_order_run_readiness() {}
+
+#[utoipa::path(
+    get, path = "/api/v1/work-orders/{id}/runs/{run_id}/evidence", tag = "work-orders",
+    params(("id" = String, Path), ("run_id" = String, Path), ("revision" = Option<String>, Query)),
+    responses(
+        (status = 200, description = "Exact evidence snapshot (current by default), current revision, archived revisions, local transition receipts, and revision-bound decisions"),
+        (status = 404, description = "The run or revision is absent or not accessible")
+    )
+)]
+async fn work_order_run_evidence() {}
+
+#[utoipa::path(
+    post, path = "/api/v1/work-orders/{id}/runs/{run_id}/review", tag = "work-orders",
+    params(("id" = String, Path), ("run_id" = String, Path)),
+    request_body(content = serde_json::Value, example = json!({
+        "expected_revision": "server-v1:<64 lowercase hexadecimal characters>",
+        "decision": "accept", "reason": "Verified the output and checks",
+        "idempotency_key": "release-review-1"
+    })),
+    responses(
+        (status = 200, description = "The local decision receipt, also returned on an identical authorized retry"),
+        (status = 403, description = "Write permission or reviewer independence check failed"),
+        (status = 404, description = "The run is absent or not accessible to this reviewer"),
+        (status = 409, description = "Evidence changed, already has a decision, is not eligible, or the idempotency key was reused")
+    )
+)]
+async fn work_order_run_review() {}
 
 #[utoipa::path(
     post, path = "/api/v1/work-orders/{id}/runs/{run_id}/artifacts", tag = "work-orders",

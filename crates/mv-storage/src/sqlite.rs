@@ -19,6 +19,8 @@ use crate::sealed_runtime::{runtime_root_key_for_scope, runtime_scope_from_paren
 use crate::vault_crypto::VaultCrypto;
 use mv_core::*;
 
+mod run_review;
+
 /// Default number of connections in the pool.
 /// SQLite WAL mode supports 1 writer + N readers, so even a small pool
 /// eliminates head-of-line blocking for concurrent read queries.
@@ -312,6 +314,10 @@ impl SqliteNodeStore {
             (
                 45,
                 include_str!("../../../migrations/045_work_order_admission_ledger.sql"),
+            ),
+            (
+                46,
+                include_str!("../../../migrations/046_run_trust_ledger.sql"),
             ),
         ];
 
@@ -6131,6 +6137,7 @@ impl InteroperabilityStore for SqliteNodeStore {
             )
             .map_err(|err| MvError::Storage(format!("insert agent run: {err}")))?;
 
+        self.append_run_transition(&transaction, run, None, event)?;
         Self::insert_outbox_event(&transaction, event)?;
         transaction
             .commit()
@@ -6180,21 +6187,45 @@ impl InteroperabilityStore for SqliteNodeStore {
             let tx = connection
                 .unchecked_transaction()
                 .map_err(|e| MvError::Storage(e.to_string()))?;
-            let Some(run) = self.load_agent_run_from_connection(&tx, run_id)? else {
-                return Ok(None);
-            };
-            if run.work_order_id != order_id {
-                return Ok(None);
-            }
-            let gates = self.gate_results_on(&tx, run_id)?;
-            let artifacts = self.artifacts_on(&tx, order_id, Some(run_id))?;
+            let snapshot = self.run_evidence_on(&tx, order_id, run_id)?;
             tx.commit().map_err(|e| MvError::Storage(e.to_string()))?;
-            Ok(Some(RunEvidenceSnapshot {
-                run,
-                gates,
-                artifacts,
-            }))
+            Ok(snapshot)
         })
+    }
+
+    async fn run_evidence_history(
+        &self,
+        order_id: Uuid,
+        run_id: Uuid,
+        revision: Option<&str>,
+    ) -> MvResult<Option<RunEvidenceHistory>> {
+        self.with_conn(|connection| {
+            let tx = connection
+                .unchecked_transaction()
+                .map_err(run_review::storage_error)?;
+            let history = self.run_evidence_history_on(&tx, order_id, run_id, revision)?;
+            tx.commit().map_err(run_review::storage_error)?;
+            Ok(history)
+        })
+    }
+
+    async fn review_run_evidence(
+        &self,
+        order_id: Uuid,
+        run_id: Uuid,
+        reviewer: &StableUri,
+        submission: &RunReviewSubmission,
+    ) -> MvResult<RunReviewReceipt> {
+        let mut connection = self
+            .conn()
+            .lock()
+            .map_err(|err| MvError::Storage(err.to_string()))?;
+        let tx = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(run_review::storage_error)?;
+        let receipt = self.review_run_evidence_on(&tx, order_id, run_id, reviewer, submission)?;
+        tx.commit().map_err(run_review::storage_error)?;
+        Ok(receipt)
     }
 
     async fn get_agent_run(&self, run_id: Uuid) -> MvResult<Option<AgentRun>> {
@@ -6283,6 +6314,21 @@ impl InteroperabilityStore for SqliteNodeStore {
         let current = self
             .load_agent_run_from_connection(&transaction, run.run_id)?
             .ok_or_else(|| MvError::NotFound("agent run not found".into()))?;
+        if event
+            .data
+            .get("from_status")
+            .and_then(serde_json::Value::as_str)
+            != Some(current.status.as_str())
+            || event
+                .data
+                .get("from_updated_at")
+                .and_then(serde_json::Value::as_str)
+                != Some(current.updated_at.to_rfc3339().as_str())
+        {
+            return Err(MvError::Conflict(
+                "run state changed before transition".into(),
+            ));
+        }
         if current.status != run.status && !current.status.can_transition_to(run.status) {
             return Err(MvError::InvalidInput(format!(
                 "invalid agent-run transition from {} to {}",
@@ -6290,6 +6336,8 @@ impl InteroperabilityStore for SqliteNodeStore {
                 run.status.as_str()
             )));
         }
+
+        self.capture_run_evidence(&transaction, current.work_order_id, current.run_id)?;
 
         // A state that may not hold leases releases them in the same
         // transaction as the transition. Approval is unbounded, so a parked run
@@ -6331,6 +6379,7 @@ impl InteroperabilityStore for SqliteNodeStore {
             ));
         }
 
+        self.append_run_transition(&transaction, run, Some(current.status), event)?;
         Self::insert_outbox_event(&transaction, event)?;
         transaction
             .commit()
@@ -6547,6 +6596,7 @@ impl InteroperabilityStore for SqliteNodeStore {
         // Checked here as well as by the database trigger: the trigger is the
         // guarantee, this is the readable error.
         result.validate(&run).map_err(MvError::InvalidInput)?;
+        self.capture_run_evidence(&transaction, result.work_order_id, result.run_id)?;
 
         transaction
             .execute(
@@ -6568,6 +6618,7 @@ impl InteroperabilityStore for SqliteNodeStore {
                 ],
             )
             .map_err(|err| MvError::Storage(format!("insert gate result: {err}")))?;
+        self.capture_run_evidence(&transaction, result.work_order_id, result.run_id)?;
         transaction
             .commit()
             .map_err(|err| MvError::Storage(format!("commit gate result: {err}")))?;
@@ -6604,6 +6655,7 @@ impl InteroperabilityStore for SqliteNodeStore {
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(|err| MvError::Storage(format!("begin artifact record: {err}")))?;
+        self.capture_run_evidence(&transaction, artifact.work_order_id, artifact.run_id)?;
         transaction
             .execute(
                 "INSERT INTO agent_run_artifacts
@@ -6646,6 +6698,7 @@ impl InteroperabilityStore for SqliteNodeStore {
                 .map_err(|err| MvError::Storage(format!("insert artifact provenance: {err}")))?;
         }
 
+        self.capture_run_evidence(&transaction, artifact.work_order_id, artifact.run_id)?;
         transaction
             .commit()
             .map_err(|err| MvError::Storage(format!("commit artifact record: {err}")))?;
@@ -13471,7 +13524,7 @@ mod tests {
                         row.get(0)
                     })
                     .map_err(|err| MvError::Storage(err.to_string()))?;
-                assert_eq!(schema_version, 45);
+                assert_eq!(schema_version, 46);
 
                 for collab in [
                     "collab_workspaces",
@@ -16288,19 +16341,21 @@ mod tests {
             data,
         );
         event.principal = run.principal.clone();
-        event.actor = run.principal.clone();
+        event.actor = run.actor.clone();
+        event.correlation_id = run.correlation_id;
         event
     }
 
     fn agent_run_transition_event(
         local_node_id: Uuid,
         run: &AgentRun,
-        from: AgentRunStatus,
+        previous: &AgentRun,
         key: &str,
     ) -> EventEnvelope {
         let data = serde_json::json!({
             "run_id": run.run_id,
-            "from_status": from.as_str(),
+            "from_status": previous.status.as_str(),
+            "from_updated_at": previous.updated_at.to_rfc3339(),
             "to_status": run.status.as_str(),
             "record_digest": "c".repeat(64),
         });
@@ -16313,7 +16368,8 @@ mod tests {
             data,
         );
         event.principal = run.principal.clone();
-        event.actor = run.principal.clone();
+        event.actor = run.actor.clone();
+        event.correlation_id = run.correlation_id;
         event
     }
 
@@ -16342,6 +16398,95 @@ mod tests {
             .await
             .unwrap();
         (work_order, node, run)
+    }
+
+    #[tokio::test]
+    async fn run_trust_ledger_is_atomic_and_append_only() {
+        let store = SqliteNodeStore::open_in_memory().unwrap();
+        let local = store.local_context_node_id().await.unwrap();
+        register_local_context_node(&store).await;
+        let (order, _, ready) = admitted_run(
+            &store,
+            local,
+            &[],
+            RiskTier::Low,
+            WorkOrderBudget {
+                wall_clock_secs: 300,
+                run_attempts: 3,
+                model_tokens: 0,
+                effect_actions: 0,
+            },
+            "ledger",
+        )
+        .await;
+        let history = || store.run_evidence_history(order.work_order_id, ready.run_id, None);
+        let initial = history().await.unwrap().unwrap();
+        assert_eq!(initial.evidence_revisions.len(), 1);
+        assert_eq!(initial.run_transition_receipts.len(), 1);
+        assert_eq!(initial.run_transition_receipts[0].from_status, None);
+        assert_eq!(
+            initial.run_transition_receipts[0].to_status,
+            AgentRunStatus::Ready
+        );
+
+        let mut leased = ready.clone();
+        leased.status = AgentRunStatus::Leased;
+        leased.updated_at = ready.updated_at + chrono::Duration::seconds(1);
+        let event = agent_run_transition_event(local, &leased, &ready, "ledger-leased");
+        store
+            .with_conn(|conn| {
+                conn.execute_batch(
+                    "CREATE TRIGGER reject_ledger_write BEFORE INSERT ON run_trust_ledger
+             BEGIN SELECT RAISE(ABORT, 'injected ledger write failure'); END;",
+                )
+                .map_err(run_review::storage_error)
+            })
+            .unwrap();
+        assert!(store
+            .transition_agent_run_with_event(&leased, None, &event)
+            .await
+            .is_err());
+        let failed = history().await.unwrap().unwrap();
+        assert_eq!(failed.current_revision, initial.current_revision);
+        assert_eq!(failed.evidence_revisions, initial.evidence_revisions);
+        assert_eq!(failed.run_transition_receipts.len(), 1);
+        assert!(store.get_outbox_event(event.id).await.unwrap().is_none());
+        store
+            .with_conn(|conn| {
+                conn.execute_batch("DROP TRIGGER reject_ledger_write;")
+                    .map_err(run_review::storage_error)
+            })
+            .unwrap();
+        store
+            .transition_agent_run_with_event(&leased, None, &event)
+            .await
+            .unwrap();
+        let replay = store
+            .transition_agent_run_with_event(&leased, None, &event)
+            .await
+            .unwrap();
+        assert!(replay.replayed);
+        let result = history().await.unwrap().unwrap();
+        assert_ne!(result.current_revision, initial.current_revision);
+        assert_eq!(result.evidence_revisions.len(), 2);
+        assert_eq!(result.run_transition_receipts.len(), 2);
+        assert_eq!(result.run_transition_receipts[1].event_id, event.id);
+        assert!(store.get_outbox_event(event.id).await.unwrap().is_some());
+
+        store
+            .with_conn(|conn| {
+                for table in ["run_evidence_versions", "run_trust_ledger"] {
+                    for query in [
+                        format!("UPDATE {table} SET sequence = sequence"),
+                        format!("DELETE FROM {table}"),
+                        format!("INSERT OR REPLACE INTO {table} SELECT * FROM {table}"),
+                    ] {
+                        assert!(conn.execute(&query, []).is_err(), "{query}");
+                    }
+                }
+                Ok(())
+            })
+            .unwrap();
     }
 
     #[tokio::test]
@@ -16636,13 +16781,13 @@ mod tests {
             (AgentRunStatus::Running, "to-running"),
             (AgentRunStatus::AwaitingApproval, "to-approval"),
         ] {
-            let from = run.status;
+            let previous = run.clone();
             run.status = next;
             run.updated_at = Utc::now();
             if next == AgentRunStatus::Running {
                 run.started_at = Some(run.updated_at);
             }
-            let event = agent_run_transition_event(local_node_id, &run, from, key);
+            let event = agent_run_transition_event(local_node_id, &run, &previous, key);
             store
                 .transition_agent_run_with_event(&run, None, &event)
                 .await
@@ -17176,7 +17321,9 @@ mod tests {
         }
         // Reconstruct a v44 vault and upgrade using the real migration runner.
         db.execute_batch(
-            "DROP TABLE work_order_admission_ledger; DELETE FROM schema_version WHERE version=45",
+            "DROP TABLE run_review_ledger; DROP TABLE run_trust_ledger;
+             DROP TABLE run_evidence_versions; DROP TABLE work_order_admission_ledger;
+             DELETE FROM schema_version WHERE version >= 45",
         )
         .unwrap();
         drop(db);

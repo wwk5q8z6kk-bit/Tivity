@@ -355,8 +355,9 @@ pub(crate) async fn start_run(
     Json(request): Json<StartRunRequest>,
 ) -> Result<(StatusCode, Json<StartRunResponse>), (StatusCode, String)> {
     authorize_write(&auth)?;
-    authorized_order(&state, &auth, work_order_id, SpaceOperation::Write).await?;
+    let order = authorized_order(&state, &auth, work_order_id, SpaceOperation::Write).await?;
     let actor = StableUri::parse(&request.actor).map_err(|err| (StatusCode::BAD_REQUEST, err))?;
+    enforce_shared_actor(&state, &auth, &order, &actor).await?;
 
     let started = state
         .engine
@@ -392,7 +393,7 @@ pub(crate) async fn record_artifact(
     Json(request): Json<RecordArtifactRequest>,
 ) -> Result<(StatusCode, Json<ArtifactView>), (StatusCode, String)> {
     authorize_write(&auth)?;
-    authorize_order_run(&state, &auth, work_order_id, run_id, SpaceOperation::Write).await?;
+    authorize_run_actor(&state, &auth, work_order_id, run_id).await?;
 
     let payload = BASE64_STANDARD
         .decode(&request.content_base64)
@@ -452,7 +453,9 @@ pub(crate) async fn record_gate(
     Json(request): Json<RecordGateRequest>,
 ) -> Result<(StatusCode, Json<GateResultView>), (StatusCode, String)> {
     authorize_write(&auth)?;
-    authorize_order_run(&state, &auth, work_order_id, run_id, SpaceOperation::Write).await?;
+    let order = authorize_order_run(&state, &auth, work_order_id, run_id, SpaceOperation::Write)
+        .await?
+        .0;
 
     let gate: GateId = request
         .gate
@@ -464,6 +467,7 @@ pub(crate) async fn record_gate(
         .map_err(|err: String| (StatusCode::BAD_REQUEST, err))?;
     let evaluator =
         StableUri::parse(&request.evaluator_actor).map_err(|err| (StatusCode::BAD_REQUEST, err))?;
+    enforce_shared_actor(&state, &auth, &order, &evaluator).await?;
 
     let result = if gate == GateId::G2 {
         state
@@ -546,7 +550,7 @@ pub(crate) async fn execute_run(
     Path((work_order_id, run_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<ExecuteRunResponse>, (StatusCode, String)> {
     authorize_write(&auth)?;
-    authorize_order_run(&state, &auth, work_order_id, run_id, SpaceOperation::Write).await?;
+    authorize_run_actor(&state, &auth, work_order_id, run_id).await?;
     let executed = state
         .engine
         .execute_run(run_id)
@@ -712,8 +716,8 @@ async fn authorize_order_run(
     order_id: Uuid,
     run_id: Uuid,
     op: SpaceOperation,
-) -> Result<(), HttpError> {
-    authorized_order(state, auth, order_id, op).await?;
+) -> Result<(WorkOrder, AgentRun), HttpError> {
+    let order = authorized_order(state, auth, order_id, op).await?;
     let run = state
         .engine
         .store
@@ -721,11 +725,49 @@ async fn authorize_order_run(
         .get_agent_run(run_id)
         .await
         .map_err(crate::rest::map_mv_error)?;
-    if run.is_some_and(|r| r.work_order_id == order_id) {
-        Ok(())
+    if let Some(run) = run.filter(|r| r.work_order_id == order_id) {
+        Ok((order, run))
     } else {
         Err((StatusCode::NOT_FOUND, "run not found".into()))
     }
+}
+
+async fn enforce_shared_actor(
+    state: &AppState,
+    auth: &AuthContext,
+    order: &WorkOrder,
+    expected: &StableUri,
+) -> Result<(), HttpError> {
+    if order.space_id.is_none() || auth.is_uncredentialed_system_admin() {
+        return Ok(());
+    }
+    let local = state
+        .engine
+        .store
+        .nodes
+        .local_context_node_id()
+        .await
+        .map_err(crate::rest::map_mv_error)?;
+    let identity = crate::rest::interoperability::CommandIdentity::derive(auth, local)
+        .map_err(|err| (StatusCode::UNAUTHORIZED, err))?;
+    if &identity.actor != expected {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "authenticated actor does not match the shared run command".into(),
+        ));
+    }
+    Ok(())
+}
+
+async fn authorize_run_actor(
+    state: &AppState,
+    auth: &AuthContext,
+    order_id: Uuid,
+    run_id: Uuid,
+) -> Result<(), HttpError> {
+    let (order, run) =
+        authorize_order_run(state, auth, order_id, run_id, SpaceOperation::Write).await?;
+    enforce_shared_actor(state, auth, &order, &run.actor).await
 }
 
 /// GET /api/v1/work-orders
@@ -814,27 +856,42 @@ fn gate_view(result: mv_core::GateResult) -> GateResultView {
 pub(crate) struct EvidenceView {
     admission_receipt: Option<mv_core::WorkOrderAdmissionReceipt>,
     revision: String,
+    current_revision: String,
+    evidence_revisions: Vec<String>,
+    run_transition_receipts: Vec<mv_core::RunTransitionReceipt>,
+    review_decisions: Vec<mv_core::RunReviewReceipt>,
     order: WorkOrderSummary,
     run: RunView,
     gates: Vec<GateResultView>,
     artifacts: Vec<ArtifactView>,
 }
 
+#[derive(Debug, Deserialize)]
+pub(crate) struct EvidenceQuery {
+    revision: Option<String>,
+}
+
 pub(crate) async fn get_run_evidence(
     Extension(auth): Extension<AuthContext>,
     State(state): State<Arc<AppState>>,
     Path((order_id, run_id)): Path<(Uuid, Uuid)>,
+    Query(query): Query<EvidenceQuery>,
 ) -> Result<Json<EvidenceView>, HttpError> {
     authorize_read(&auth)?;
     let order = authorized_order(&state, &auth, order_id, SpaceOperation::Read).await?;
-    let snapshot = state
+    let history = state
         .engine
         .store
         .nodes
-        .run_evidence_snapshot(order_id, run_id)
+        .run_evidence_history(order_id, run_id, query.revision.as_deref())
         .await
         .map_err(crate::rest::map_mv_error)?
-        .ok_or_else(|| (StatusCode::NOT_FOUND, "run not found".into()))?;
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                "run or evidence revision not found".into(),
+            )
+        })?;
     let admission_receipt = state
         .engine
         .store
@@ -842,14 +899,65 @@ pub(crate) async fn get_run_evidence(
         .work_order_admission_receipt(order_id)
         .await
         .map_err(crate::rest::map_mv_error)?;
+    let snapshot = history.snapshot;
     Ok(Json(EvidenceView {
         admission_receipt,
         revision: snapshot.revision(),
+        current_revision: history.current_revision,
+        evidence_revisions: history.evidence_revisions,
+        run_transition_receipts: history.run_transition_receipts,
+        review_decisions: history.review_decisions,
         order: work_order_summary(&order),
         run: run_view(&snapshot.run),
         gates: snapshot.gates.into_iter().map(gate_view).collect(),
         artifacts: snapshot.artifacts.iter().map(artifact_view).collect(),
     }))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ReviewRunRequest {
+    expected_revision: String,
+    decision: mv_core::RunReviewDecision,
+    reason: String,
+    idempotency_key: String,
+}
+
+pub(crate) async fn review_run_evidence(
+    Extension(auth): Extension<AuthContext>,
+    State(state): State<Arc<AppState>>,
+    Path((order_id, run_id)): Path<(Uuid, Uuid)>,
+    Json(request): Json<ReviewRunRequest>,
+) -> Result<Json<mv_core::RunReviewReceipt>, HttpError> {
+    authorize_write(&auth)?;
+    authorize_order_credential(&auth)?;
+    if auth.is_uncredentialed_system_admin() || auth.subject.is_none() {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            "an authenticated human reviewer is required".into(),
+        ));
+    }
+    let store = &state.engine.store.nodes;
+    let local = store
+        .local_context_node_id()
+        .await
+        .map_err(crate::rest::map_mv_error)?;
+    let reviewer = crate::rest::interoperability::CommandIdentity::derive(&auth, local)
+        .map_err(|err| (StatusCode::UNAUTHORIZED, err))?
+        .principal;
+    let idempotency_key = IdempotencyKey::parse(request.idempotency_key)
+        .map_err(|err| (StatusCode::BAD_REQUEST, err))?;
+    let submission = mv_core::RunReviewSubmission {
+        expected_revision: request.expected_revision,
+        decision: request.decision,
+        reason: request.reason,
+        idempotency_key,
+    };
+    store
+        .review_run_evidence(order_id, run_id, &reviewer, &submission)
+        .await
+        .map(Json)
+        .map_err(crate::rest::map_mv_error)
 }
 
 /// GET /api/v1/work-orders/:id/runs/:run_id/gates

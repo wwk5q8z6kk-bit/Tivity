@@ -295,9 +295,27 @@ export function recordArtifact(
 	);
 }
 
-export function getRunEvidence(orderId: string, runId: string, token: string) {
+export type RunReviewDecision = 'accept' | 'return';
+
+export interface RunReviewReceipt {
+	receipt_id: string;
+	evidence_revision: string;
+	reviewer: string;
+	decision: RunReviewDecision;
+	reason: string;
+	decided_at: string;
+}
+
+function runPath(orderId: string, runId: string) {
+	return `${BASE}/${encodeURIComponent(orderId)}/runs/${encodeURIComponent(runId)}`;
+}
+
+export function getRunEvidence(orderId: string, runId: string, token: string, revision?: string) {
 	return readOrderData<{
 		revision: string;
+		current_revision?: string;
+		evidence_revisions?: string[];
+		review_decisions?: RunReviewReceipt[];
 		admission_receipt?: {
 			event_id: string;
 			principal: string;
@@ -308,7 +326,28 @@ export function getRunEvidence(orderId: string, runId: string, token: string) {
 		run: AgentRunView;
 		gates: GateResultView[];
 		artifacts: ArtifactView[];
-	}>(`${BASE}/${encodeURIComponent(orderId)}/runs/${encodeURIComponent(runId)}/evidence`, token);
+	}>(
+		`${runPath(orderId, runId)}/evidence${revision ? '?revision=' + encodeURIComponent(revision) : ''}`,
+		token
+	);
+}
+
+export function submitRunReview(
+	orderId: string,
+	runId: string,
+	token: string,
+	submission: {
+		expected_revision: string;
+		decision: RunReviewDecision;
+		reason: string;
+		idempotency_key: string;
+	}
+) {
+	return fetchJson<RunReviewReceipt>(`${runPath(orderId, runId)}/review`, {
+		method: 'POST',
+		headers: { ...bearerHeaders(token), 'Content-Type': 'application/json' },
+		body: JSON.stringify(submission)
+	});
 }
 
 export function listArtifacts(workOrderId: string, token = ''): Promise<ArtifactView[]> {

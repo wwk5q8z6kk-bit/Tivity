@@ -24,6 +24,31 @@ Use the work-order ID to retrieve its runs and artifact list. Match the artifact
 
 With authentication enabled, personal orders belong to their requesting principal. A shared order uses current membership in its active collaborative Space. A viewer can inspect the order, including its artifact content and export. Changes require both a write-capable credential and a role with Space write permission. A namespace restriction cannot identify a Space or a personal order. Use a vault identity for this API. List queries apply the same visibility rules before returning results. An inaccessible order returns the same response as an unknown order.
 
+### Exact-revision review
+
+- `GET /api/v1/work-orders/{id}/runs/{run_id}/evidence` reads the run, gate
+  results and artifact references together. It returns a content-derived
+  `revision`, the `current_revision`, archived revision IDs, local transition
+  receipts and review decisions. Use `?revision=<revision>` to reopen a specific
+  archived snapshot. The order summary outside the snapshot remains current.
+- `POST /api/v1/work-orders/{id}/runs/{run_id}/review` takes
+  `expected_revision`, `decision` (`accept` or `return`), `reason` and
+  `idempotency_key`. It requires an authenticated, registered, active human
+  with write access to the order's active Space, distinct from the order and
+  run actors and principals. Return records feedback on a terminal run; it
+  does not mutate or restart the run. Accept also requires a completed run and
+  no failed or blocked recorded checks.
+- The decision and its receipt commit together. A stale revision, a second
+  decision on the same revision or reuse of the key for a different submission
+  returns HTTP 409. An authorized exact retry returns the original receipt,
+  even when subsequent evidence has changed. Reopening archived evidence still
+  requires current read authorization.
+- Starts and lifecycle transitions persist a receipt, the evidence snapshot
+  and the outbox event together. Existing pre-ledger runs remain readable; old
+  events are not backfilled and an imported run does not acquire the source
+  vault's review history or authority. The ledger is enforced by local SQLite
+  writes, not a signed, portable or independently verifiable audit trail.
+
 ## Objects
 
 ```text

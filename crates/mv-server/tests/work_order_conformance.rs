@@ -35,6 +35,7 @@ use mv_engine::config::EngineConfig;
 use mv_engine::engine::MindVaultEngine;
 use mv_server::rest::create_router;
 use mv_server::state::AppState;
+use mv_storage::sqlite::SqliteNodeStore;
 
 async fn setup() -> (axum::Router, Arc<MindVaultEngine>, Arc<AppState>, TempDir) {
     for key in [
@@ -175,6 +176,8 @@ fn work_order_routes_are_described_by_the_authoritative_openapi_document() {
         "/api/v1/work-orders/{id}/export",
         "/api/v1/work-orders/restore",
         "/api/v1/work-orders/{id}/runs/{run_id}/readiness",
+        "/api/v1/work-orders/{id}/runs/{run_id}/evidence",
+        "/api/v1/work-orders/{id}/runs/{run_id}/review",
         "/api/v1/work-orders/{id}/runs/{run_id}/artifacts",
         "/api/v1/work-orders/{id}/runs/{run_id}/gates",
         "/api/v1/work-orders/{id}/runs/{run_id}/approve",
@@ -684,7 +687,7 @@ async fn wedge_value_proof_trusted_work_completes_over_http() {
     let mut members = Vec::new();
     for (subject, role) in [
         ("local-system", mv_core::SpaceRole::Member),
-        ("reviewer", mv_core::SpaceRole::Viewer),
+        ("reviewer", mv_core::SpaceRole::Member),
     ] {
         let identity = mv_core::IdentityRecord::new(
             local_node_id,
@@ -882,6 +885,20 @@ async fn wedge_value_proof_trusted_work_completes_over_http() {
     assert_ne!(before["revision"], after["revision"]);
     assert_eq!(after["artifacts"][0]["content_digest"], digest);
     assert_eq!(after["run"]["status"], "completed");
+    let transitions = after["run_transition_receipts"]
+        .as_array()
+        .expect("run transition ledger");
+    assert!(transitions.len() >= 3);
+    assert_eq!(transitions.last().unwrap()["to_status"], "completed");
+    assert_eq!(
+        transitions.last().unwrap()["evidence_revision"],
+        after["revision"]
+    );
+    assert!(after["evidence_revisions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|r| r == &before["revision"]));
 
     // Duplicate execute must not silently succeed against a completed run.
     let replay = router
@@ -907,7 +924,7 @@ async fn wedge_value_proof_trusted_work_completes_over_http() {
     let config = engine.config.clone();
     drop(_state);
     drop(engine);
-    let reopened = Arc::new(MindVaultEngine::init(config).await.unwrap());
+    let reopened = Arc::new(MindVaultEngine::init(config.clone()).await.unwrap());
     let review_state = Arc::new(AppState::new(reopened.clone()));
     let router = create_router(review_state.clone());
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -922,7 +939,7 @@ async fn wedge_value_proof_trusted_work_completes_over_http() {
         let jwt = jsonwebtoken::encode(
             &jsonwebtoken::Header::default(),
             &json!({
-                "sub": sub, "role":"read", "exp": chrono::Utc::now().timestamp() + 300
+                "sub": sub, "role":"write", "exp": chrono::Utc::now().timestamp() + 300
             }),
             &jsonwebtoken::EncodingKey::from_secret(secret.as_bytes()),
         )
@@ -966,6 +983,192 @@ async fn wedge_value_proof_trusted_work_completes_over_http() {
         .await
         .unwrap();
     assert_eq!(reopened_snapshot, after);
+    let review_url = format!("{order_url}/runs/{run_id}/review");
+    let historic: Value = reviewer
+        .get(&snapshot_url)
+        .query(&[("revision", before["revision"].as_str().unwrap())])
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(historic["revision"], before["revision"]);
+    assert_eq!(historic["current_revision"], after["revision"]);
+    assert_eq!(historic["artifacts"], json!([]));
+    let impersonation = reviewer
+        .post(format!("{order_url}/nodes/{node_id}/runs"))
+        .json(&json!({"actor": actor.as_str(), "confidence": 0.99}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(impersonation.status(), StatusCode::FORBIDDEN);
+    assert_eq!(
+        reviewer
+            .post(format!("{order_url}/runs/{run_id}/execute"))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::FORBIDDEN
+    );
+    let decision = json!({
+        "expected_revision": after["revision"], "decision": "accept",
+        "reason": "Verified the output and checks", "idempotency_key": "verified-run"
+    });
+    let stale = json!({
+        "expected_revision": before["revision"], "decision": "return",
+        "reason": "This superseded snapshot needs changes", "idempotency_key": "stale-run"
+    });
+    assert_eq!(
+        reviewer
+            .post(&review_url)
+            .json(&stale)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        client_for("local-system")
+            .post(&review_url)
+            .json(&decision)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        outsider
+            .post(&review_url)
+            .json(&decision)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::NOT_FOUND
+    );
+    let accepted: Value = reviewer
+        .post(&review_url)
+        .json(&decision)
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(accepted["evidence_revision"], after["revision"]);
+    assert_eq!(accepted["decision"], "accept");
+    let replay: Value = reviewer
+        .post(&review_url)
+        .json(&decision)
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(replay, accepted);
+    let mut changed = decision.clone();
+    changed["reason"] = json!("Different reason, same key");
+    assert_eq!(
+        reviewer
+            .post(&review_url)
+            .json(&changed)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::CONFLICT
+    );
+    let reviewed: Value = reviewer
+        .get(&snapshot_url)
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(reviewed["review_decisions"], json!([accepted]));
+
+    // Evaluators may append a new observation after completion. That must
+    // create a new evidence revision without rewriting the original decision.
+    reopened
+        .record_run_gate(
+            uuid::Uuid::parse_str(&run_id).unwrap(),
+            mv_core::GateId::G3,
+            mv_core::GateOutcome::Fail,
+            &mv_core::StableUri::principal(local_node_id, uuid::Uuid::now_v7()),
+            "c".repeat(64),
+            Some("A later check disagreed".into()),
+        )
+        .await
+        .unwrap();
+    let updated: Value = reviewer
+        .get(&snapshot_url)
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_ne!(updated["revision"], after["revision"]);
+    assert_eq!(updated["review_decisions"], json!([accepted]));
+    let mut rejected = decision.clone();
+    rejected["expected_revision"] = updated["revision"].clone();
+    rejected["idempotency_key"] = json!("accept-failed-new-check");
+    let response = reviewer
+        .post(&review_url)
+        .json(&rejected)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+    assert!(response
+        .text()
+        .await
+        .unwrap()
+        .contains("failed or blocked check"));
+    let replay: Value = reviewer
+        .post(&review_url)
+        .json(&decision)
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(replay, accepted);
+    let returned: Value = reviewer
+        .post(&review_url)
+        .json(&json!({
+            "expected_revision": updated["revision"], "decision": "return",
+            "reason": "Investigate the latest failed check", "idempotency_key": "return-run"
+        }))
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(returned["decision"], "return");
+    assert_eq!(returned["evidence_revision"], updated["revision"]);
     assert_eq!(
         outsider.get(&snapshot_url).send().await.unwrap().status(),
         StatusCode::NOT_FOUND
@@ -1058,6 +1261,16 @@ async fn wedge_value_proof_trusted_work_completes_over_http() {
         .await
         .unwrap();
     assert_eq!(
+        reviewer
+            .post(&review_url)
+            .json(&decision)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
         reviewer.get(&snapshot_url).send().await.unwrap().status(),
         StatusCode::NOT_FOUND
     );
@@ -1071,6 +1284,29 @@ async fn wedge_value_proof_trusted_work_completes_over_http() {
             .await
     );
     task.abort();
+    assert!(task.await.unwrap_err().is_cancelled());
+    drop(review_state);
+    drop(reopened);
+    // Check newly committed decisions through an independent connection to the
+    // on-disk canonical store, without depending on Tantivy writer teardown.
+    let reopened_db = SqliteNodeStore::open_read_only_with_mode(
+        &Path::new(&config.data_dir).join("mindvault.sqlite"),
+        config.sealed_mode,
+    )
+    .unwrap();
+    let durable = reopened_db
+        .run_evidence_history(
+            uuid::Uuid::parse_str(work_order_id).unwrap(),
+            uuid::Uuid::parse_str(&run_id).unwrap(),
+            None,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        serde_json::to_value(durable.review_decisions).unwrap(),
+        json!([accepted, returned])
+    );
     std::env::remove_var("MINDVAULT_JWT_SECRET");
 }
 
