@@ -19,7 +19,6 @@
 	let choosing = false;
 	let reviewing = false;
 	let orderId = '';
-	let runId = '';
 	let orders: ReturnType<typeof listWorkOrders>;
 	let runs: ReturnType<typeof listRuns>;
 	let evidence: ReturnType<typeof readEvidence>;
@@ -54,13 +53,17 @@
 		const note = reason.trim();
 		if (!ref || !access || !isPinned(result, ref) || !note || pending || disabled) return;
 		const fingerprint = JSON.stringify([ref.orderId, ref.runId, result.revision, decision, note]);
-		const key = retry?.fingerprint === fingerprint ? retry.key : crypto.randomUUID();
-		retry = { fingerprint, key };
 		pending = true;
 		decisionError = '';
 		const isCurrentView = () =>
 			reviewing && reference === ref && token === access && evidence === displayedEvidence;
 		try {
+			// getRandomValues is available in embedded WebViews that lack randomUUID.
+			const key = retry?.fingerprint === fingerprint ? retry.key : 'review-' + Array.from(
+				crypto.getRandomValues(new Uint8Array(16)),
+				(byte) => byte.toString(16).padStart(2, '0')
+			).join('');
+			retry = { fingerprint, key };
 			await submitRunReview(ref.orderId, ref.runId, access, {
 				expected_revision: result.revision,
 				decision,
@@ -97,8 +100,18 @@
 		choosing = true;
 		reviewing = false;
 		orderId = '';
-		runId = '';
 		orders = listWorkOrders(undefined, token);
+	}
+
+	function chooseOrder(id: string) {
+		runs = listRuns(id, token);
+		orderId = id;
+	}
+
+	function linkRun(runId: string) {
+		reference = { orderId, runId };
+		choosing = false;
+		review();
 	}
 
 	async function readEvidence(ref: RunReference, revision?: string) {
@@ -176,41 +189,27 @@
 		{#await orders}
 			<p role="status">Loading work orders…</p>
 		{:then choices}
-			<label
-				>Work order <select
-					bind:value={orderId}
-					on:change={(e) => {
-						runId = '';
-						if (e.currentTarget.value) runs = listRuns(e.currentTarget.value, token);
-					}}
-				>
-					<option value="">Choose a work order</option>
-					{#each choices as order}<option value={order.work_order_id}>{order.goal}</option>{/each}
-				</select></label
-			>
-			{#if !choices.length}<p>No work orders available to this identity.</p>{/if}
 			{#if orderId}
+				<p>Work order: {choices.find((order) => order.work_order_id === orderId)?.goal}</p>
+				<button class="underline" {disabled} on:click={() => (orderId = '')}>Choose a different work order</button>
 				{#await runs}<p role="status">Loading runs…</p>
 				{:then attempts}
-					<label
-						>Run <select bind:value={runId}
-							><option value="">Choose a run</option>
-							{#each attempts as run}<option value={run.run_id}
-									>Attempt {run.attempt_no} · {run.status} · {run.run_id}</option
-								>{/each}
-						</select></label
-					>
-					{#if !attempts.length}<p>This order has no runs.</p>{/if}
-					<button
-						class="underline"
-						disabled={disabled || !runId}
-						on:click={() => {
-							reference = { orderId, runId };
-							choosing = false;
-							review();
-						}}>Link run</button
-					>
+					{#if attempts.length}
+						<ul class="max-h-48 space-y-2 overflow-y-auto" aria-label="Choose a run">
+							{#each attempts as run (run.run_id)}
+								<li><button class="text-left underline" {disabled} on:click={() => linkRun(run.run_id)}>Link attempt {run.attempt_no} · {run.status} · {run.run_id}</button></li>
+							{/each}
+						</ul>
+					{:else}<p>This order has no runs.</p>{/if}
 				{:catch}<p role="alert">Runs unavailable. Choose the order again to retry.</p>{/await}
+			{:else if choices.length}
+				<p>Choose a work order</p>
+				<ul class="max-h-48 space-y-2 overflow-y-auto" aria-label="Work orders">
+					{#each choices as order (order.work_order_id)}
+						<li><button class="text-left underline" {disabled} on:click={() => chooseOrder(order.work_order_id)}>{order.goal}</button></li>
+					{/each}
+				</ul>
+			{:else}<p>No work orders available to this identity.</p>
 			{/if}
 		{:catch}<p role="alert">
 				Work orders unavailable. Use a vault identity with access to the order. Namespace-only
