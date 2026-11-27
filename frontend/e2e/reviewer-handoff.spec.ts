@@ -45,7 +45,7 @@ test('carries a specific run on a canvas and rechecks access for each reader', a
 				expect(submission.expected_revision).toBe(
 					submission.decision === 'accept' ? original : changed
 				);
-				expect(submission.idempotency_key).toBeTruthy();
+				expect(submission.idempotency_key).toMatch(/^review-[a-f0-9]{32}$/);
 				const receipt = {
 					receipt_id: 'decision-' + (decisions.length + 1),
 					reviewer: 'Independent reviewer',
@@ -119,9 +119,8 @@ test('carries a specific run on a canvas and rechecks access for each reader', a
 	await page.getByLabel('Access token').fill('reviewer');
 	await page.getByRole('button', { name: 'Use token' }).click();
 	await page.getByRole('button', { name: 'Link a work-order run' }).click();
-	await page.getByRole('combobox', { name: 'Work order', exact: true }).selectOption(orderId);
-	await page.getByRole('combobox', { name: 'Run', exact: true }).selectOption(runId);
-	await page.getByRole('button', { name: 'Link run', exact: true }).click();
+	await page.getByRole('button', { name: 'Verify release readiness', exact: true }).click();
+	await page.getByRole('button', { name: `Link attempt 2 · completed · ${runId}` }).click();
 	await expect(page.getByText('Attempt 2 · completed')).toBeVisible();
 	await page.getByRole('button', { name: 'Pin current evidence for a saved copy' }).click();
 	await page.getByLabel('Canvas name').fill('Friday release');
@@ -145,6 +144,7 @@ test('carries a specific run on a canvas and rechecks access for each reader', a
 	await expect(page.getByText('Other attempt')).toHaveCount(0);
 	await page.getByRole('button', { name: 'Check artifact bytes' }).click();
 	await expect(page.getByText('Digest matches')).toBeVisible();
+	await page.evaluate(() => Object.defineProperty(crypto, 'randomUUID', { value: undefined }));
 	await page.getByLabel('Decision reason').fill('Verified the release evidence');
 	await page.getByRole('button', { name: 'Accept exact revision' }).click();
 	await expect(page.getByText('Accepted this evidence revision')).toBeVisible();

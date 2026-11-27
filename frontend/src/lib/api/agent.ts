@@ -1,5 +1,6 @@
 import { writable } from 'svelte/store';
 import { browser } from '$app/environment';
+import { Channel, invoke, isTauri } from '@tauri-apps/api/core';
 import { fetchJson, API_BASE_URL } from './client';
 import type {
     ChronicleEntry,
@@ -65,9 +66,8 @@ export const agentRunObservations = writable<{
 
 let agentRunObservationSeq = 0;
 
-let socket: WebSocket | null = null;
+let connection: { close(): void } | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-let stopped = false;
 
 /** Pure dispatcher for unit tests and the live WebSocket handler. */
 export function dispatchAgentNotification(data: unknown): void {
@@ -148,38 +148,54 @@ export function dispatchAgentNotification(data: unknown): void {
 }
 
 export function connectAgentStream() {
-    if (!browser || socket) return;
-    stopped = false;
-
-    const wsBaseUrl = API_BASE_URL.replace(/^http/, 'ws');
-    const url = `${wsBaseUrl}/ws/agent`;
-
-    socket = new WebSocket(url);
-
-    socket.onmessage = (event: MessageEvent) => {
+    if (!browser || connection || reconnectTimer) return;
+    const current = { close() {} };
+    connection = current;
+    const receive = (message: string) => {
+        if (connection !== current) return;
         try {
-            dispatchAgentNotification(JSON.parse(event.data));
+            dispatchAgentNotification(JSON.parse(message));
         } catch (e) {
             console.warn('[ws/agent] Failed to parse message:', e);
         }
     };
-
-    socket.onclose = () => {
-        socket = null;
-        if (!stopped) {
-            reconnectTimer = setTimeout(connectAgentStream, 5000);
-        }
+    const closed = () => {
+        if (connection !== current) return;
+        connection = null;
+        reconnectTimer = setTimeout(() => {
+            reconnectTimer = null;
+            connectAgentStream();
+        }, 5000);
     };
+
+    if (isTauri() && globalThis.location?.protocol === 'tauri:' && location.hostname === 'localhost') {
+        const channel = new Channel<string | null>((message) => {
+            if (message === null) closed();
+            else receive(message);
+        });
+        current.close = () => { void invoke('stop_agent_stream', { channelId: channel.id }).catch(() => {}); };
+        void invoke('start_agent_stream', { channel }).catch(closed);
+        return;
+    }
+
+    try {
+        const socket = new WebSocket(`${API_BASE_URL.replace(/^http/, 'ws')}/ws/agent`);
+        current.close = () => socket.close();
+        socket.onmessage = (event: MessageEvent) => receive(event.data);
+        socket.onclose = closed;
+    } catch {
+        closed();
+    }
 }
 
 export function disconnectAgentStream() {
-    stopped = true;
     if (reconnectTimer) {
         clearTimeout(reconnectTimer);
         reconnectTimer = null;
     }
-    socket?.close();
-    socket = null;
+    const current = connection;
+    connection = null;
+    current?.close();
 }
 
 export interface AgentContextResponse {
